@@ -2,6 +2,10 @@
 #define LED_DELAY_MS 1000
 #endif
 
+#ifndef MATRIX_SIZE
+#define MATRIX_SIZE 8
+#endif
+
 #ifndef L1
 #define L1 2
 #endif
@@ -65,3 +69,5 @@
 #ifndef R8
 #define R8 22
 #endif
+
+
