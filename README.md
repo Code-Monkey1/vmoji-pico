@@ -3,7 +3,8 @@ Volumetric Display for the Raspberry Pi Pico (RP2040).
 
 ## Dev Env Setup
 
-We use the "Raspberry Pi Pico Project" extension in VS Code with a Linux PC.
+We use the "Raspberry Pi Pico Project" extension in VS Code with a Linux PC.  
+With it, you can prepare the environment (install the "pico-sdk" SDK locally).  
 
 This [PDF guide](https://pip-assets.raspberrypi.com/categories/610-raspberry-pi-pico/documents/RP-008276-DS-1-getting-started-with-pico.pdf?disposition=inline) explains very well what to do.
 
@@ -23,10 +24,8 @@ For cross-debugging, make sure you installed the appropriate tools:
 
 ## Quick Start (VS Code)
 
-Use the **Raspberry Pi Pico extension** to prepare the environment (install the "pico-sdk" SDK locally).
-
 ### Building
-Then, from the extension, you can click "Compile Project".  
+From the extension, you can click "Compile Project".  
 
 ### Flashing by Copy/Paste
 If not in bootloader mode already, reconnect the Raspberry Pi Pico while pressing down on the bootloader button.  
