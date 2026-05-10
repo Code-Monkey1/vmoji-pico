@@ -6,6 +6,10 @@
 #define MATRIX_SIZE 8
 #endif
 
+#ifndef PIN_COUNT
+#define PIN_COUNT 16
+#endif
+
 #ifndef L1
 #define L1 2
 #endif
