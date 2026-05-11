@@ -67,8 +67,17 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "pico/stdlib.h"
 #include "led-matrix.h"
+#include "hardware/uart.h"
+
+// UART communication for debug info
+#define UART_ID uart0
+#define BAUD_RATE 115200
+#define UART_TX_PIN 0
+#define UART_RX_PIN 1
+#define EOL "\r\n" // End of Line for UART
 
 /*
  * Put ALL GPIOs connected to matrix here.
@@ -128,24 +137,33 @@ void test_pair(uint high_pin, uint low_pin)
     gpio_put(low_pin, 0);
 }
 
+static inline void uart_print(const char *s) {
+    uart_puts(UART_ID, s);
+}
+
 int main()
 {
     stdio_init_all();
 
     init_pins();
 
+    // UART setup
+    uart_init(UART_ID, BAUD_RATE);
+    gpio_set_function(UART_TX_PIN, UART_FUNCSEL_NUM(UART_ID, UART_TX_PIN));
+    gpio_set_function(UART_RX_PIN, UART_FUNCSEL_NUM(UART_ID, UART_RX_PIN));
+
     sleep_ms(2000);
 
-    printf("\n\n");
-    printf("=====================================\n");
-    printf("8x8 MATRIX AUTO-MAP TOOL\n");
-    printf("=====================================\n");
+    uart_print(EOL);
+    uart_print("=====================================" EOL);
+    uart_print("8x8 MATRIX AUTO-MAP TOOL" EOL);
+    uart_print("=====================================" EOL);
+
+    char buf[32]; // Ensure this is large enough for your data + null terminator
 
     while (1) {
 
-        /*
-         * Try every HIGH/LOW pair
-         */
+        // Try every HIGH/LOW pair
         for (int hi = 0; hi < PIN_COUNT; hi++) {
 
             for (int lo = 0; lo < PIN_COUNT; lo++) {
@@ -156,21 +174,15 @@ int main()
                 uint high_pin = MATRIX_PINS[hi];
                 uint low_pin  = MATRIX_PINS[lo];
 
-                /*
-                 * Activate pair
-                 */
+                // Activate pair
                 test_pair(high_pin, low_pin);
 
-                /*
-                 * Print mapping info
-                 */
-                printf("HIGH=GP%d  LOW=GP%d\n",
-                       high_pin,
-                       low_pin);
+                // Print mapping info
+                memset(buf, 0, sizeof(buf));
+                snprintf(buf, sizeof(buf), "HIGH=GP%d  LOW=GP%d" EOL, high_pin, low_pin);
+                uart_print(buf);
 
-                /*
-                 * Observe LED
-                 */
+                // Observe LED
                 sleep_ms(100);
             }
         }
