@@ -8,8 +8,9 @@ Protocol (115200 8N1, line-terminated with \\n or \\r\\n)::
     S <mtl_goals> <opp_goals>
     H
 
-``S`` sets the score digits. ``H`` (heartbeat) is sent once per poll from the PC so the firmware can
-blink an activity pixel without changing the score.
+``S`` sets the score digits. ``H`` (heartbeat) is sent after each NHL poll and, during long sleeps, at least every
+``--uart-heartbeat-interval`` seconds so the activity LED blinks periodically even when
+``--slow-poll`` is large (``--fast-poll`` only applies to LIVE/CRIT/PRE games).
 
 Digits must be 0-9 (firmware display limit). First number is always MTL; second is the opponent.
 
@@ -153,6 +154,19 @@ def serial_send_score_payload(ser: Any, payload: bytes, *, label: str, agent_deb
         )
 
 
+def sleep_between_polls(ser: Any, sleep_for: float, uart_hb_interval: float, agent_debug: bool) -> None:
+    """Send poll-done ``H``, then sleep ``sleep_for`` s with extra ``H`` every ``uart_hb_interval`` when sleep is long."""
+    serial_send_heartbeat(ser, agent_debug=agent_debug)
+    remaining = float(sleep_for)
+    while remaining > 1e-6:
+        chunk = min(remaining, uart_hb_interval)
+        time.sleep(chunk)
+        remaining -= chunk
+        if remaining > 1e-6:
+            LOG.debug("UART heartbeat during poll sleep (%.1fs remaining)", remaining)
+            serial_send_heartbeat(ser, agent_debug=agent_debug)
+
+
 # #endregion
 
 
@@ -290,8 +304,15 @@ def main() -> int:
         help="Serial device (e.g. /dev/ttyUSB0, /dev/ttyACM0, or /dev/serial/by-id/...). Required unless --self-test.",
     )
     parser.add_argument("--baud", type=int, default=115200, help="UART baud rate.")
-    parser.add_argument("--fast-poll", type=float, default=12.0, help="Seconds between polls during live/critical/pregame.")
-    parser.add_argument("--slow-poll", type=float, default=180.0, help="Seconds between polls when idle or game over.")
+    parser.add_argument("--fast-poll", type=float, default=12.0, help="Seconds between NHL polls during LIVE/CRIT/PRE.")
+    parser.add_argument("--slow-poll", type=float, default=180.0, help="Seconds between NHL polls when idle or game over.")
+    parser.add_argument(
+        "--uart-heartbeat-interval",
+        type=float,
+        default=15.0,
+        metavar="SEC",
+        help="Minimum seconds between UART H heartbeats while waiting for the next NHL poll (keeps LED blinking during long slow_poll).",
+    )
     parser.add_argument("--state-file", type=Path, default=default_state, help="Persist last sent h,a JSON here.")
     parser.add_argument("--self-test", action="store_true", help="Load fixture and exit (no serial, no network).")
     parser.add_argument(
@@ -410,9 +431,12 @@ def main() -> int:
                 else:
                     LOG.info("No MTL game in recent local dates; not sending UART (display unchanged).")
 
-                serial_send_heartbeat(ser, agent_debug=args.agent_debug_log)
-                LOG.debug("Poll cycle finished; sleeping %.1fs", sleep_for)
-                time.sleep(sleep_for)
+                LOG.debug(
+                    "Poll cycle finished; next NHL poll in %.1fs (UART H at least every %.1fs while waiting).",
+                    sleep_for,
+                    args.uart_heartbeat_interval,
+                )
+                sleep_between_polls(ser, sleep_for, args.uart_heartbeat_interval, args.agent_debug_log)
         except KeyboardInterrupt:
             LOG.info("Exiting.")
             return 0
