@@ -17,7 +17,46 @@ static const uint COL_PINS[NB_COL] = {R1,R6,L1,R4,L8,L2,L7,L4};
 // GPIO pins to set to LOW to activate a row
 static const uint ROW_PINS[NB_ROW] = {R8,R7,R3,L3,R2,L5,L6,R5};
 
-static uint8_t frameBuffer[NB_ROW][NB_COL] = {0}; // Rows and columns. 0 for LEDs that should be OFF, 1 for ON
+// Rows and columns. 0 for LEDs that should be OFF, 1 for ON
+static bool heart[NB_ROW][NB_COL] = 
+{
+    {0,1,1,0,0,1,1,0},
+    {1,0,0,1,1,0,0,1},
+    {1,0,0,1,1,0,0,1},
+    {1,0,0,0,1,0,0,1},
+    {1,0,0,0,0,0,0,1},
+    {0,1,0,0,0,0,1,0},
+    {0,0,1,0,0,1,0,0},
+    {0,0,0,1,1,0,0,0},
+};
+
+static bool capitalP[NB_ROW][NB_COL] = 
+{
+    {1,1,1,1,1,1,0,0},
+    {1,1,0,0,1,1,0,0},
+    {1,1,0,0,1,1,0,0},
+    {1,1,1,1,1,1,0,0},
+    {1,1,0,0,0,0,0,0},
+    {1,1,0,0,0,0,0,0},
+    {1,1,0,0,0,0,0,0},
+    {1,1,0,0,0,0,0,0},
+};
+
+static bool capitalR[NB_ROW][NB_COL] = 
+{
+    {1,1,1,1,1,1,0,0},
+    {1,1,0,0,1,1,0,0},
+    {1,1,0,0,1,1,0,0},
+    {1,1,1,1,1,1,0,0},
+    {1,1,0,1,0,0,0,0},
+    {1,1,0,0,1,0,0,0},
+    {1,1,0,0,0,1,0,0},
+    {1,1,0,0,0,0,1,0},
+};
+
+static bool frameBuffer[NB_ROW][NB_COL] = {0};
+
+
 char textBuffer[50]; // Ensure this is large enough for your data + null terminator
 
 /** All columns LOW, all rows HIGH: no LED has both column source and row sink active. */
@@ -29,6 +68,10 @@ void matrix_blank(void)
     for (int i = 0; i < NB_ROW; i++) {
         gpio_set_dir(ROW_PINS[i], GPIO_IN);
     }
+}
+
+void copy_frame_buffer(void *src, void *dst) {
+    memcpy(dst, src, NB_ROW * NB_COL * sizeof(bool));
 }
 
 /*
@@ -105,11 +148,7 @@ int main(void)
 
     matrix_init();
 
-    for (int r = 0; r < NB_ROW; r++) {
-        for (int c = 0; c < NB_COL; c++) {
-            frameBuffer[r][c] = (uint8_t)(((r ^ c) & 1) != 0); // chess board pattern
-        }
-    }
+    copy_frame_buffer(&capitalR, &frameBuffer);
 
     while (1) {
         matrix_refresh();
