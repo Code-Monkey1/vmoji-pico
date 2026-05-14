@@ -1,0 +1,31 @@
+{
+  "prevDate": "2025-04-30",
+  "currentDate": "2025-05-01",
+  "nextDate": "2025-05-02",
+  "games": [
+    {
+      "id": 2024020001,
+      "gameState": "OFF",
+      "homeTeam": {
+        "abbrev": "MTL",
+        "score": 5
+      },
+      "awayTeam": {
+        "abbrev": "TOR",
+        "score": 2
+      }
+    },
+    {
+      "id": 2024020002,
+      "gameState": "LIVE",
+      "homeTeam": {
+        "abbrev": "BOS",
+        "score": 1
+      },
+      "awayTeam": {
+        "abbrev": "MTL",
+        "score": 3
+      }
+    }
+  ]
+}
