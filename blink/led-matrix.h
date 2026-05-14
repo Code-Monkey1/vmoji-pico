@@ -2,6 +2,15 @@
 #define LED_DELAY_MS 1000
 #endif
 
+// This prototype uses a 8x8 LED matrix (that spins)
+#ifndef NB_COL
+#define NB_COL 8
+#endif
+
+#ifndef NB_ROW
+#define NB_ROW 8
+#endif
+
 #ifndef MATRIX_SIZE
 #define MATRIX_SIZE 8
 #endif
@@ -73,5 +82,3 @@
 #ifndef R8
 #define R8 22
 #endif
-
-
