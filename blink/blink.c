@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include "led-matrix.h"
 #include "hardware/uart.h"
 
@@ -56,6 +57,10 @@ static bool capitalR[NB_ROW][NB_COL] =
 
 static bool frameBuffer[NB_ROW][NB_COL] = {0};
 
+/** Dwell each glyph without blocking matrix_refresh(): never sleep_ms in the scan loop. */
+#define SYMBOL_DWELL_US 1000000ULL
+
+enum { SYM_P = 0, SYM_HEART, SYM_R, SYM_HEART2, SYM_COUNT };
 
 char textBuffer[50]; // Ensure this is large enough for your data + null terminator
 
@@ -148,9 +153,33 @@ int main(void)
 
     matrix_init();
 
-    copy_frame_buffer(&capitalR, &frameBuffer);
+    int sym = SYM_P;
+    copy_frame_buffer(&capitalP, &frameBuffer);
+    uint64_t sym_started_us = time_us_64();
 
     while (1) {
         matrix_refresh();
+
+        uint64_t now = time_us_64();
+        if (now - sym_started_us >= SYMBOL_DWELL_US) {
+            sym_started_us = now;
+            sym = (sym + 1) % SYM_COUNT;
+            switch (sym) {
+            case SYM_P:
+                copy_frame_buffer(&capitalP, &frameBuffer);
+                break;
+            case SYM_HEART:
+                copy_frame_buffer(&heart, &frameBuffer);
+                break;
+            case SYM_HEART2:
+                copy_frame_buffer(&heart, &frameBuffer);
+                break;
+            case SYM_R:
+                copy_frame_buffer(&capitalR, &frameBuffer);
+                break;
+            default:
+                break;
+            }
+        }
     }
 }
