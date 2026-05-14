@@ -27,29 +27,12 @@ void matrix_blank(void)
         gpio_put(COL_PINS[i], 0);
     }
     for (int i = 0; i < NB_ROW; i++) {
-        gpio_put(ROW_PINS[i], 1);
-    }
-}
-
-/*
- * Put ALL matrix pins into high impedance.
- *
- * This is critical.
- */
-void matrix_all_inputs(void)
-{
-    for (int i = 0; i < MATRIX_SIZE; i++) {
-
         gpio_set_dir(ROW_PINS[i], GPIO_IN);
-        gpio_disable_pulls(ROW_PINS[i]);
-
-        gpio_set_dir(COL_PINS[i], GPIO_IN);
-        gpio_disable_pulls(COL_PINS[i]);
     }
 }
 
 /*
- * Initialize GPIO hardware: all matrix pins as outputs in a defined blank state.
+ * Initialize GPIO hardware
  */
 void matrix_init(void)
 {
@@ -57,7 +40,7 @@ void matrix_init(void)
 
         gpio_init(ROW_PINS[i]);
         gpio_init(COL_PINS[i]);
-        gpio_set_dir(ROW_PINS[i], GPIO_OUT);
+        gpio_set_dir(ROW_PINS[i], GPIO_IN);
         gpio_set_dir(COL_PINS[i], GPIO_OUT);
     }
 
@@ -74,16 +57,28 @@ void matrix_pixel_on(uint row, uint col)
         return;
     }
     matrix_blank();
-    sleep_us(5);
+    sleep_us(MATRIX_BLANK_SETTLE_US);
     gpio_put(COL_PINS[col], 1);
     gpio_put(ROW_PINS[row], 0);
 }
 
 /*
- * Full frame multiplex from frameBuffer: deferred until walking-pixel wiring is validated.
+ * One full scan of frameBuffer: exactly one row sunk at a time; columns follow row data.
+ * Blank between rows to avoid ghosting (same ordering as matrix_pixel_on).
  */
 void matrix_refresh(void)
 {
+    for (int r = 0; r < NB_ROW; r++) {
+        matrix_blank();
+        sleep_us(MATRIX_BLANK_SETTLE_US);
+        for (int c = 0; c < NB_COL; c++) {
+            gpio_put(COL_PINS[c], frameBuffer[r][c]);
+        }
+        gpio_set_dir(ROW_PINS[r], GPIO_OUT);
+        gpio_put(ROW_PINS[r], 0);
+        sleep_us(MATRIX_ROW_DWELL_US);
+        gpio_set_dir(ROW_PINS[r], GPIO_IN);
+    }
 }
 
 static inline void uart_print(const char *s) {
@@ -110,12 +105,13 @@ int main(void)
 
     matrix_init();
 
-    while (1) {
-        for (uint idx = 0; idx < (uint)(NB_ROW * NB_COL); idx++) {
-            uint row = idx / NB_COL;
-            uint col = idx % NB_COL;
-            matrix_pixel_on(row, col);
-            sleep_ms(LED_DELAY_MS);
+    for (int r = 0; r < NB_ROW; r++) {
+        for (int c = 0; c < NB_COL; c++) {
+            frameBuffer[r][c] = (uint8_t)(((r ^ c) & 1) != 0); // chess board pattern
         }
+    }
+
+    while (1) {
+        matrix_refresh();
     }
 }

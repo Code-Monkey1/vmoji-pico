@@ -2,6 +2,16 @@
 #define LED_DELAY_MS 1000
 #endif
 
+/** Microseconds after blank before asserting row/column drive (anti-ghosting). */
+#ifndef MATRIX_BLANK_SETTLE_US
+#define MATRIX_BLANK_SETTLE_US 5
+#endif
+
+/** Lit time per row during one full matrix_refresh() scan. */
+#ifndef MATRIX_ROW_DWELL_US
+#define MATRIX_ROW_DWELL_US 400
+#endif
+
 // This prototype uses a 8x8 LED matrix (that spins)
 #ifndef NB_COL
 #define NB_COL 8
