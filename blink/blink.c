@@ -41,6 +41,13 @@ static void arm_activity_blink_us(uint32_t duration_us)
     }
 }
 
+/** Heartbeat: always restart visible pulse from this moment (each H should blink). */
+static void arm_activity_pulse_us(uint32_t duration_us)
+{
+    uint64_t now = time_us_64();
+    activity_blink_until_us = now + (uint64_t)duration_us;
+}
+
 static const uint COL_PINS[NB_COL] = {R1, R6, L1, R4, L8, L2, L7, L4};
 static const uint ROW_PINS[NB_ROW] = {R8, R7, R3, L3, R2, L5, L6, R5};
 
@@ -182,7 +189,7 @@ static void draw_score_digits(int h, int a)
 {
     framebuffer_clear();
     draw_digit_3x5(h, 0);
-    draw_separator_colon();
+    //draw_separator_colon();
     draw_digit_3x5(a, 5);
 }
 
@@ -233,7 +240,7 @@ static void handle_complete_line(const char *line)
         if (*q != '\0') {
             return;
         }
-        arm_activity_blink_us(900000u);
+        arm_activity_pulse_us(800000u);
         return;
     }
     if (*p == 'S') {
