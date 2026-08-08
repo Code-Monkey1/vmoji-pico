@@ -5,6 +5,7 @@
 #include "pico/time.h"
 #include "pico.h"
 #include "led-matrix.h"
+#include "telemetry.h"
 #include "hardware/uart.h"
 #include "hardware/irq.h"
 #include "hardware/sync.h"
@@ -25,6 +26,28 @@ static char line_buf[LINE_MAX];
 static size_t line_len;
 
 static bool frameBuffer[NB_ROW][NB_COL];
+
+/** Runtime-adjustable so the dashboard can trade refresh rate against
+ *  brightness while watching the effect on the live jitter plot. */
+static uint16_t row_dwell_us = MATRIX_ROW_DWELL_US;
+static bool scan_paused = false;
+
+/** Set from the UART ISR, consumed in the main loop: the ISR must stay short
+ *  and must not reach into the telemetry module. */
+static volatile bool uart_overrun;
+static volatile uint32_t uart_rx_total;
+
+/** Glyphs selectable with the `G <id>` command. Row-major, one byte per row,
+ *  bit 7 is column 0. */
+#define GLYPH_COUNT 6
+static const uint8_t glyphs[GLYPH_COUNT][NB_ROW] = {
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  /* 0: blank */
+    {0x66, 0x99, 0x99, 0x89, 0x81, 0x42, 0x24, 0x18},  /* 1: heart */
+    {0xFC, 0xCC, 0xCC, 0xFC, 0xC0, 0xC0, 0xC0, 0xC0},  /* 2: letter P */
+    {0xFC, 0xCC, 0xCC, 0xFC, 0xD0, 0xC8, 0xC4, 0xC2},  /* 3: letter R */
+    {0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55},  /* 4: checkerboard */
+    {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},  /* 5: all on */
+};
 
 /** Activity pixel (row 7, col 7): blinks for ~duration after a score line or `H` heartbeat. */
 static uint64_t activity_blink_until_us;
@@ -115,7 +138,7 @@ void matrix_refresh(void)
         }
         gpio_set_dir(ROW_PINS[r], GPIO_OUT);
         gpio_put(ROW_PINS[r], 0);
-        sleep_us(MATRIX_ROW_DWELL_US);
+        sleep_us(row_dwell_us);
         gpio_set_dir(ROW_PINS[r], GPIO_IN);
     }
 }
@@ -132,6 +155,9 @@ static void uart_rx_push(uint8_t ch)
     if (next != uart_rx_tail) {
         uart_rx_storage[head] = ch;
         uart_rx_head = next;
+        uart_rx_total++;
+    } else {
+        uart_overrun = true;
     }
 }
 
@@ -193,6 +219,41 @@ static void draw_score_digits(int h, int a)
     draw_digit_3x5(a, 5);
 }
 
+static void draw_glyph(int glyph_id)
+{
+    if (glyph_id < 0 || glyph_id >= GLYPH_COUNT) {
+        return;
+    }
+    for (int r = 0; r < NB_ROW; r++) {
+        uint8_t bits = glyphs[glyph_id][r];
+        for (int c = 0; c < NB_COL; c++) {
+            frameBuffer[r][c] = (bool)((bits >> (7 - c)) & 1u);
+        }
+    }
+}
+
+/** Parse a non-negative decimal integer, returning -1 if there are no digits. */
+static int parse_uint(const char **cursor)
+{
+    const char *p = *cursor;
+    while (*p == ' ') {
+        p++;
+    }
+    if (*p < '0' || *p > '9') {
+        return -1;
+    }
+    int value = 0;
+    while (*p >= '0' && *p <= '9') {
+        value = value * 10 + (*p - '0');
+        if (value > 1000000) {
+            value = 1000000;
+        }
+        p++;
+    }
+    *cursor = p;
+    return value;
+}
+
 /** `p` must point at 'S'. Expect "S <0-9> <0-9>" with optional spaces. */
 static bool process_score_line_from_s(const char *p)
 {
@@ -216,35 +277,114 @@ static bool process_score_line_from_s(const char *p)
     int a = *p - '0';
     draw_score_digits(h, a);
     arm_activity_blink_us(1500000u);
+    telemetry_set_glyph(0);
 
     char ack[24];
-    snprintf(ack, sizeof(ack), "OK %d-%d\n", h, a);
-    printf("%s", ack);
-    snprintf(ack, sizeof(ack), "OK %d-%d" EOL, h, a);
-    uart_puts(UART_ID, ack);
+    snprintf(ack, sizeof(ack), "OK %d-%d", h, a);
+    telemetry_ack(ack);
     return true;
 }
 
-/** Score line `S …` or poll heartbeat `H` (from PC each NHL poll). Skips leading noise to first S/H. */
+/**
+ * Host commands stay ASCII and line-oriented on purpose: during bring-up you
+ * want to be able to drive the board from minicom without any tooling. Only the
+ * high-rate telemetry going the other way is binary, where framing and a CRC
+ * actually earn their keep.
+ *
+ *   S <0-9> <0-9>   set the two score digits
+ *   H               heartbeat, pulses the activity pixel
+ *   G <0-5>         select a glyph
+ *   D <us>          set per-row dwell time (50-5000 us)
+ *   B               blank the display
+ *   P               toggle scan pause
+ *   Z               reset counters
+ *   ?               report the current configuration
+ */
 static void handle_complete_line(const char *line)
 {
     const char *p = line;
-    while (*p != '\0' && *p != 'S' && *p != 'H') {
+    while (*p == ' ') {
         p++;
     }
-    if (*p == 'H') {
-        const char *q = p + 1;
-        while (*q == ' ') {
-            q++;
-        }
-        if (*q != '\0') {
+
+    switch (*p) {
+    case 'S':
+        telemetry_note_command(process_score_line_from_s(p));
+        return;
+
+    case 'H':
+        arm_activity_pulse_us(800000u);
+        telemetry_note_command(true);
+        return;
+
+    case 'G': {
+        const char *cursor = p + 1;
+        int glyph_id = parse_uint(&cursor);
+        if (glyph_id < 0 || glyph_id >= GLYPH_COUNT) {
+            telemetry_ack("ERR glyph");
+            telemetry_note_command(false);
             return;
         }
-        arm_activity_pulse_us(800000u);
+        draw_glyph(glyph_id);
+        telemetry_set_glyph((uint8_t)glyph_id);
+        char ack[24];
+        snprintf(ack, sizeof(ack), "OK glyph %d", glyph_id);
+        telemetry_ack(ack);
+        telemetry_note_command(true);
         return;
     }
-    if (*p == 'S') {
-        process_score_line_from_s(p);
+
+    case 'D': {
+        const char *cursor = p + 1;
+        int dwell = parse_uint(&cursor);
+        if (dwell < 50 || dwell > 5000) {
+            telemetry_ack("ERR dwell 50-5000");
+            telemetry_note_command(false);
+            return;
+        }
+        row_dwell_us = (uint16_t)dwell;
+        telemetry_set_row_dwell(row_dwell_us);
+        char ack[32];
+        snprintf(ack, sizeof(ack), "OK dwell %d us", dwell);
+        telemetry_ack(ack);
+        telemetry_note_command(true);
+        return;
+    }
+
+    case 'B':
+        framebuffer_clear();
+        telemetry_set_glyph(0);
+        telemetry_ack("OK blank");
+        telemetry_note_command(true);
+        return;
+
+    case 'P':
+        scan_paused = !scan_paused;
+        telemetry_set_flag(VMOJI_FLAG_PAUSED, scan_paused);
+        if (scan_paused) {
+            matrix_blank();
+        }
+        telemetry_ack(scan_paused ? "OK paused" : "OK running");
+        telemetry_note_command(true);
+        return;
+
+    case 'Z':
+        telemetry_reset_counters();
+        telemetry_ack("OK counters cleared");
+        telemetry_note_command(true);
+        return;
+
+    case '?': {
+        char ack[48];
+        snprintf(ack, sizeof(ack), "CFG dwell=%u paused=%d", row_dwell_us, (int)scan_paused);
+        telemetry_ack(ack);
+        telemetry_note_command(true);
+        return;
+    }
+
+    default:
+        telemetry_note_command(false);
+        return;
     }
 }
 
@@ -273,6 +413,18 @@ static void drain_uart_lines(void)
     while (uart_rx_pop(&ch)) {
         feed_line_byte(ch);
     }
+
+    /* Move ISR-side observations into telemetry from the main loop. */
+    if (uart_overrun) {
+        uart_overrun = false;
+        telemetry_set_flag(VMOJI_FLAG_OVERRUN, true);
+    }
+    uint32_t total = uart_rx_total;
+    static uint32_t reported_rx_total;
+    if (total != reported_rx_total) {
+        telemetry_note_rx_bytes(total - reported_rx_total);
+        reported_rx_total = total;
+    }
 }
 
 /** USB CDC (/dev/ttyACM0): same `S h a` lines as UART0 GP1 when using a TTL adapter. */
@@ -286,6 +438,7 @@ static void drain_stdio_line_bytes(void)
         if (c < 0 || c > 255) {
             continue;
         }
+        telemetry_note_rx_bytes(1);
         feed_line_byte((uint8_t)c);
     }
 }
@@ -302,19 +455,15 @@ static void uart_setup(void)
 
     sleep_ms(1000);
 
+    /* Plain-text banner on both links. Binary telemetry starts immediately
+     * afterwards, so this doubles as a test that the host parser can find its
+     * sync word in a stream that begins with unframed ASCII. */
     uart_print(EOL);
     uart_print("=====================================" EOL);
     uart_print("=========     8x8 VMOJI     =========" EOL);
-    uart_print("=========  UART score mode   ========" EOL);
-    uart_print("= USB or UART0: lines like S 2 3   =" EOL);
+    uart_print("===  binary telemetry @ 10 Hz     ===" EOL);
+    uart_print("===  commands: S G D B P Z ?      ===" EOL);
     uart_print("=====================================" EOL);
-
-    /* Same hint on USB serial (minicom /dev/ttyACM0); UART0 is GP0 TX / GP1 RX. */
-    printf("\n=====================================\n");
-    printf("=========     8x8 VMOJI     =========\n");
-    printf("=========  UART score mode   ========\n");
-    printf("= USB or UART0: lines like S 2 3   =\n");
-    printf("=====================================\n\n");
 }
 
 int main(void)
@@ -325,9 +474,17 @@ int main(void)
     matrix_init();
     framebuffer_clear();
 
+    telemetry_init();
+    telemetry_log("vmoji telemetry online");
+
     while (true) {
-        matrix_refresh();
+        if (!scan_paused) {
+            matrix_refresh();
+            telemetry_note_scan();
+        }
         drain_uart_lines();
         drain_stdio_line_bytes();
+        telemetry_set_framebuffer(&frameBuffer[0][0]);
+        telemetry_service();
     }
 }
