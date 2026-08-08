@@ -1,0 +1,21 @@
+# Host dashboard dependencies.
+#
+# PySide6 rather than PyQt6: it is the official binding from The Qt Company and
+# it is LGPL, so there is no licensing question if this is ever distributed as a
+# binary. The two APIs are near-identical (Signal vs pyqtSignal), so porting
+# either way is mechanical.
+PySide6>=6.7,<7
+
+# pyqtgraph, not matplotlib: it renders through Qt's own scene graph and holds
+# 60 FPS with thousands of points, which matplotlib does not.
+pyqtgraph>=0.13
+
+# Serial transport, and the cross-platform port enumeration in
+# serial.tools.list_ports.
+pyserial>=3.5
+
+# Used by pyqtgraph for array handling.
+numpy>=1.24
+
+# Test only.
+pytest>=8.0
