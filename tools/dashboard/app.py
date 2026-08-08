@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_ports:
         ports = sources.list_serial_ports()
         if not ports:
-            print("no serial ports found")
+            print("no USB serial ports found (legacy /dev/ttyS* nodes are hidden)")
         for device, description in ports:
             print(f"{device}\t{description}")
         return 0
