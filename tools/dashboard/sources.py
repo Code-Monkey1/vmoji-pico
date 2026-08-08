@@ -62,23 +62,35 @@ class Source(Protocol):
 # ---------------------------------------------------------------------------
 
 
-def list_serial_ports() -> list[tuple[str, str]]:
+def list_serial_ports(usb_only: bool = True) -> list[tuple[str, str]]:
     """Available ports as (device, human description).
 
     Enumerating rather than hardcoding is what makes the app portable: the same
     build finds ``COM3`` on Windows and ``/dev/ttyACM0`` on Linux.
+
+    ``usb_only`` drops ports with no USB vendor id, which on a typical Linux box
+    means the 32 legacy ``/dev/ttyS*`` 8250 nodes that exist whether or not any
+    hardware is behind them. Burying the one real device in that list is a small
+    thing that makes a tool feel careless. Pass ``usb_only=False`` to reach a
+    genuine motherboard RS-232 port.
     """
     try:
         from serial.tools import list_ports
     except ImportError:  # pragma: no cover
         return []
-    found = []
+
+    everything = []
+    usb = []
     for port in list_ports.comports():
         label = port.description or "serial port"
         if port.manufacturer:
             label = f"{label} ({port.manufacturer})"
-        found.append((port.device, label))
-    return sorted(found)
+        entry = (port.device, label)
+        everything.append(entry)
+        if port.vid is not None:
+            usb.append(entry)
+
+    return sorted(usb if usb_only else everything)
 
 
 class SerialSource:

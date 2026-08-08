@@ -162,6 +162,24 @@ The firmware sends telemetry on **both** USB CDC (`/dev/ttyACM0`) and UART0
 first bytes on the link are an ASCII banner - which doubles as a permanent test
 that the parser can find its sync word in a stream that starts as unframed text.
 
+### Bring-up check
+
+Run this before opening the GUI. If something is wrong - wrong port, wrong baud,
+firmware not running, TX and RX swapped - it says so in one line, instead of
+leaving you staring at an empty plot unsure whether the fault is in the firmware
+or the dashboard:
+
+```bash
+.venv/bin/python verify_link.py --port /dev/ttyACM0
+.venv/bin/python verify_link.py --port /dev/ttyACM0 --command "D 900"
+.venv/bin/python verify_link.py                       # sanity-check the simulator
+```
+
+It checks the numbers, not just that bytes moved: telemetry arriving well under
+10 Hz, a zero refresh rate, an implausible die temperature, a CRC error rate over
+1%, or jitter exceeding the mean scan period each produce a specific warning. It
+exits non-zero on failure, so it works in a script.
+
 ### Tests
 
 ```bash
