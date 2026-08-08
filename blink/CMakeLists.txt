@@ -37,10 +37,12 @@ pico_sdk_init()
 
 add_executable(blink
     blink.c
+    telemetry.cpp
     )
 
 # pull in common dependencies
-target_link_libraries(blink pico_stdlib)
+# hardware_adc drives the RP2040 on-die temperature sensor used by telemetry.
+target_link_libraries(blink pico_stdlib hardware_adc)
 
 if (PICO_CYW43_SUPPORTED)
     target_link_libraries(blink pico_cyw43_arch_none)
