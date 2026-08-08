@@ -1,6 +1,25 @@
 # vmoji-pico
 Volumetric Display for the Raspberry Pi Pico (RP2040).
 
+## Telemetry dashboard
+
+The firmware streams binary telemetry at 10 Hz - measured scan rate, per-scan
+jitter, die temperature and the live framebuffer - to a PySide6 desktop
+dashboard that plots it in real time, logs it, and can replay a recording.
+
+See [tools/dashboard/README.md](tools/dashboard/README.md).
+
+![vmoji telemetry dashboard](tools/dashboard/docs/dashboard.png)
+
+The dashboard also runs against a built-in simulator, so no hardware is needed to
+try it:
+
+```bash
+cd tools/dashboard
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python app.py
+```
+
 ## Dev Env Setup
 
 We use the "Raspberry Pi Pico Project" extension in VS Code with a Linux PC.  
