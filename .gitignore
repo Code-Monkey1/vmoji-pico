@@ -52,6 +52,16 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 
+# Host dashboard
+**/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+**/venv/
+
+# Telemetry captures
+*.vmc
+
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
