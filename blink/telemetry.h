@@ -52,6 +52,18 @@ void telemetry_set_framebuffer(const bool *framebuffer);
 /** Reset the interval and lifetime counters. */
 void telemetry_reset_counters(void);
 
+/** Frames discarded because a link could not keep up. */
+uint16_t telemetry_tx_dropped(void);
+
+/**
+ * Service the UART0 transmit FIFO. Call from the UART0 interrupt handler.
+ *
+ * Telemetry is queued rather than written synchronously, so that emitting a
+ * frame costs the scan loop a memcpy instead of the milliseconds a blocking
+ * write used to take.
+ */
+void telemetry_uart_irq(void);
+
 /**
  * Emit due messages. Call from the main loop; it is non-blocking apart from the
  * serial write itself and sends nothing until a reporting interval has elapsed.
@@ -63,6 +75,12 @@ void telemetry_log(const char *text);
 
 /** Send a command acknowledgement. */
 void telemetry_ack(const char *text);
+
+/**
+ * Announce firmware version, git revision and the chip's unique board id as a
+ * Log message, in the form `ID vmoji <ver> sha=<sha> board=<serial>`.
+ */
+void telemetry_send_identity(void);
 
 #ifdef __cplusplus
 }

@@ -17,6 +17,7 @@ Also Qt-free on purpose. Nothing in this module imports PySide6.
 
 from __future__ import annotations
 
+import bisect
 import math
 import random
 import struct
@@ -681,26 +682,65 @@ class ReplaySource:
         self.name = f"replay {Path(path).name}"
         self.speed = speed
         self.loop = loop
+        self.paused = False
+        self._offsets = [record.offset_s for record in self._records]
         self._index = 0
-        self._started = time.monotonic()
+        # Position is integrated from wall-clock deltas rather than derived from
+        # a fixed start time. That is what lets pause hold and a speed change
+        # take effect from here on, instead of retroactively rescaling the time
+        # already played and jumping the playhead.
+        self._position_s = 0.0
+        self._last_tick = time.monotonic()
 
     @property
     def duration_s(self) -> float:
-        return self._records[-1].offset_s
+        return self._records[-1].offset_s if self._records else 0.0
+
+    @property
+    def elapsed_s(self) -> float:
+        return min(self._position_s, self.duration_s)
 
     @property
     def progress(self) -> float:
-        return self._index / len(self._records) if self._records else 1.0
+        duration = self.duration_s
+        return min(1.0, self._position_s / duration) if duration > 0 else 1.0
 
     @property
     def exhausted(self) -> bool:
         return self._index >= len(self._records)
 
     def restart(self) -> None:
-        self._index = 0
-        self._started = time.monotonic()
+        self.seek(0.0)
+
+    def seek(self, offset_s: float) -> None:
+        """Jump to a point in recorded time.
+
+        The byte stream is cut mid-frame, so the parser will resynchronise at
+        the new position and count the partial frame as resync bytes. That is
+        the honest outcome of seeking a byte stream, and exactly the recovery
+        path the parser exists to provide.
+        """
+        offset = max(0.0, min(offset_s, self.duration_s))
+        self._position_s = offset
+        self._last_tick = time.monotonic()
+        self._index = bisect.bisect_left(self._offsets, offset)
+
+    def _advance(self) -> float:
+        now = time.monotonic()
+        delta = now - self._last_tick
+        self._last_tick = now
+        if not self.paused:
+            self._position_s += delta * self.speed
+        return self._position_s
 
     def read(self, max_bytes: int = 4096) -> bytes:
+        if self.paused:
+            # Stamp the clock after the sleep, not before: time spent parked
+            # must not be charged to the playhead when playback resumes.
+            time.sleep(0.005)
+            self._last_tick = time.monotonic()
+            return b""
+
         if self.exhausted:
             if not self.loop:
                 return b""
@@ -709,9 +749,10 @@ class ReplaySource:
         if self.speed <= 0:  # as fast as possible
             record = self._records[self._index]
             self._index += 1
+            self._position_s = record.offset_s
             return record.data
 
-        elapsed = (time.monotonic() - self._started) * self.speed
+        elapsed = self._advance()
         out = bytearray()
         while self._index < len(self._records):
             record = self._records[self._index]

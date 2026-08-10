@@ -18,11 +18,13 @@ import time
 from pathlib import Path
 
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, QThread, QTimer, Slot
+from PySide6.QtCore import QSettings, Qt, QThread, QTimer, Slot
 from PySide6.QtGui import QAction, QFont, QKeySequence
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDockWidget,
+    QScrollArea,
     QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
@@ -34,6 +36,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSlider,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QVBoxLayout,
@@ -48,6 +51,10 @@ from widgets import KeyValuePanel, MatrixView
 
 REPAINT_INTERVAL_MS = 33  # ~30 FPS
 STALE_AFTER_S = 1.0
+PORT_RESCAN_INTERVAL_MS = 2000
+SEEK_RESOLUTION = 1000  # slider steps across the whole capture
+RECONNECT_MIN_S = 0.5
+RECONNECT_MAX_S = 5.0
 
 STATUS_KEYS = [
     "Uptime",
@@ -125,6 +132,18 @@ class MainWindow(QMainWindow):
         self._repaint_timer.timeout.connect(self._repaint)
         self._repaint_timer.start(REPAINT_INTERVAL_MS)
 
+        # Notice a board being plugged in without making the user press Rescan.
+        self._port_timer = QTimer(self)
+        self._port_timer.timeout.connect(self._rescan_if_idle)
+        self._port_timer.start(PORT_RESCAN_INTERVAL_MS)
+
+        self._reconnect_timer = QTimer(self)
+        self._reconnect_timer.setSingleShot(True)
+        self._reconnect_timer.timeout.connect(self._attempt_reconnect)
+        self._reconnect_delay = RECONNECT_MIN_S
+        self._reconnect_target: tuple[str, str | None] | None = None
+
+        self._restore_layout()
         self._refresh_ports()
         self._select_source(initial_selection)
         self._connect_source()
@@ -137,6 +156,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self._build_side_panel())
         splitter.setStretchFactor(0, 1)
         splitter.setSizes([980, 460])
+        self.main_splitter = splitter
 
         container = QWidget()
         outer = QVBoxLayout(container)
@@ -144,10 +164,13 @@ class MainWindow(QMainWindow):
         outer.setSpacing(6)
         outer.addWidget(self._build_connection_bar())
         outer.addWidget(self._build_sim_banner())
+        outer.addWidget(self._build_replay_bar())
         outer.addWidget(splitter, 1)
         self.setCentralWidget(container)
 
         self._build_log_dock()
+
+        self.setMinimumSize(900, 600)
 
         self.status_label = QLabel("starting")
         self.statusBar().addWidget(self.status_label, 1)
@@ -174,11 +197,21 @@ class MainWindow(QMainWindow):
         bar = QGroupBox("Link")
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(8, 4, 8, 6)
+        layout.setSpacing(4)
 
         layout.addWidget(QLabel("Source:"))
         self.source_combo = QComboBox()
-        self.source_combo.setMinimumWidth(320)
-        layout.addWidget(self.source_combo)
+        # Port descriptions are long, so let the combo take any spare width but
+        # never demand it: a fixed 320 px floor here was most of the reason the
+        # window could not be narrowed.
+        self.source_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.source_combo.setMinimumContentsLength(16)
+        self.source_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        layout.addWidget(self.source_combo, 1)
 
         self.rescan_button = QPushButton("Rescan")
         self.rescan_button.setToolTip("Re-enumerate serial ports")
@@ -210,11 +243,52 @@ class MainWindow(QMainWindow):
         self.record_button.clicked.connect(self._toggle_recording)
         layout.addWidget(self.record_button)
 
-        self.open_button = QPushButton("Open capture...")
+        self.open_button = QPushButton("Open...")
+        self.open_button.setToolTip("Open a recorded capture for replay")
         self.open_button.clicked.connect(self._open_capture)
         layout.addWidget(self.open_button)
 
-        layout.addWidget(QLabel("Replay speed:"))
+        layout.addStretch(1)
+        return bar
+
+    def _build_replay_bar(self) -> QWidget:
+        """Transport controls, shown only while a recording is playing.
+
+        A capture is the only source you can actually navigate, so it gets real
+        transport controls rather than a lone speed box that sits greyed out and
+        meaningless during a live session.
+        """
+        bar = QWidget()
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.replay_play_button = QPushButton("Pause")
+        self.replay_play_button.setCheckable(True)
+        self.replay_play_button.setToolTip("Hold the playhead without losing your place")
+        self.replay_play_button.toggled.connect(self._toggle_replay_pause)
+        layout.addWidget(self.replay_play_button)
+
+        self.replay_restart_button = QPushButton("Restart")
+        self.replay_restart_button.clicked.connect(self._restart_replay)
+        layout.addWidget(self.replay_restart_button)
+
+        self.replay_loop_check = QCheckBox("Loop")
+        self.replay_loop_check.setToolTip("Play the capture on repeat, for an unattended demo")
+        self.replay_loop_check.toggled.connect(
+            lambda on: self._control_replay(lambda source: setattr(source, "loop", on))
+        )
+        layout.addWidget(self.replay_loop_check)
+
+        self.replay_slider = QSlider(Qt.Orientation.Horizontal)
+        self.replay_slider.setRange(0, SEEK_RESOLUTION)
+        self.replay_slider.sliderMoved.connect(self._seek_replay)
+        layout.addWidget(self.replay_slider, 1)
+
+        self.replay_time_label = QLabel("0.0 / 0.0 s")
+        self.replay_time_label.setMinimumWidth(110)
+        layout.addWidget(self.replay_time_label)
+
+        layout.addWidget(QLabel("Speed:"))
         self.speed_spin = QDoubleSpinBox()
         self.speed_spin.setRange(0.0, 100.0)
         self.speed_spin.setSingleStep(0.5)
@@ -224,7 +298,8 @@ class MainWindow(QMainWindow):
         self.speed_spin.valueChanged.connect(self._apply_replay_speed)
         layout.addWidget(self.speed_spin)
 
-        layout.addStretch(1)
+        bar.setVisible(False)
+        self.replay_bar = bar
         return bar
 
     def _build_plots(self) -> QWidget:
@@ -272,8 +347,16 @@ class MainWindow(QMainWindow):
         for plot in (self.plot_period, self.plot_jitter, self.plot_temp):
             plot.setXLink(self.plot_refresh)
 
+        # A splitter rather than a stack: four plots with a fixed share each
+        # cannot be made readable on a short window, and which plot matters
+        # depends on what you are chasing. Dragging a divider is the fix.
+        stack = QSplitter(Qt.Orientation.Vertical)
         for plot in (self.plot_refresh, self.plot_period, self.plot_jitter, self.plot_temp):
-            layout.addWidget(plot, 1)
+            plot.setMinimumHeight(60)
+            stack.addWidget(plot)
+        stack.setChildrenCollapsible(False)
+        layout.addWidget(stack, 1)
+        self.plot_splitter = stack
 
         self.plot_temp.setLabel("bottom", "Time since first sample", units="s")
         return panel
@@ -296,6 +379,18 @@ class MainWindow(QMainWindow):
         return plot
 
     def _build_side_panel(self) -> QWidget:
+        """The four stacked boxes, inside a scroll area.
+
+        Their combined natural height is around 950 px, and a plain stack makes
+        that a hard floor on the window: the dashboard could not be opened on a
+        1080p laptop at all. Scrolling trades a little convenience on a short
+        window for the ability to have a short window.
+        """
+        scroller = QScrollArea()
+        scroller.setWidgetResizable(True)
+        scroller.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -320,7 +415,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(link_box)
 
         layout.addWidget(self._build_control_panel())
-        return panel
+
+        scroller.setWidget(panel)
+        return scroller
 
     def _build_control_panel(self) -> QWidget:
         box = QGroupBox("Control")
@@ -379,6 +476,8 @@ class MainWindow(QMainWindow):
         self.log_view.setFont(QFont("monospace"))
 
         dock = QDockWidget("Device log and acknowledgements", self)
+        # saveState keys docks by objectName and silently skips unnamed ones.
+        dock.setObjectName("logDock")
         dock.setWidget(self.log_view)
         dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
@@ -426,6 +525,20 @@ class MainWindow(QMainWindow):
         entries.append(("Simulator (synthetic data - no hardware)", ("sim", None)))
         return entries
 
+    def _find_selection(self, data: tuple[str, str | None] | None) -> int:
+        """Index of a (kind, device) entry, or -1.
+
+        QComboBox.findData compares through QVariant, which does not recognise
+        two equal Python tuples as the same value, so it silently reports "not
+        found" and the caller ends up on whatever happens to be first.
+        """
+        if data is None:
+            return -1
+        for index in range(self.source_combo.count()):
+            if self.source_combo.itemData(index) == data:
+                return index
+        return -1
+
     def _refresh_ports(self) -> None:
         remembered = self.source_combo.currentData()
         entries = self._port_entries()
@@ -443,10 +556,9 @@ class MainWindow(QMainWindow):
         self.source_combo.clear()
         for label, data in entries:
             self.source_combo.addItem(label, data)
-        if remembered is not None:
-            index = self.source_combo.findData(remembered)
-            if index >= 0:
-                self.source_combo.setCurrentIndex(index)
+        index = self._find_selection(remembered)
+        if index >= 0:
+            self.source_combo.setCurrentIndex(index)
         self.source_combo.blockSignals(False)
 
     def _select_source(self, selection: tuple[str, str | None]) -> None:
@@ -455,7 +567,7 @@ class MainWindow(QMainWindow):
             self._remember_replay(device)
             self._refresh_ports()
 
-        index = self.source_combo.findData((kind, device))
+        index = self._find_selection((kind, device))
         if index < 0 and kind == "serial" and device:
             # A port named explicitly that enumeration did not report; honour it
             # rather than silently substituting something else.
@@ -464,22 +576,36 @@ class MainWindow(QMainWindow):
         if index >= 0:
             self.source_combo.setCurrentIndex(index)
 
+    def _rescan_if_idle(self) -> None:
+        """Periodic re-enumeration, skipped while the user is in the combo.
+
+        Rebuilding the list under an open popup closes it mid-click, which feels
+        like the application fighting you.
+        """
+        view = self.source_combo.view()
+        if view is not None and view.isVisible():
+            return
+        self._refresh_ports()
+
     def _remember_replay(self, path: str) -> None:
         if path not in self._replay_paths:
             self._replay_paths.append(path)
+
+    def _build_source(self, selection: tuple[str, str | None]) -> sources.Source:
+        kind, device = selection
+        if kind == "serial":
+            return sources.SerialSource(device, self.baud_combo.currentData())
+        if kind == "replay":
+            return sources.ReplaySource(device, speed=self._replay_speed())
+        return sources.SimSource(error_rate=self._default_error_rate)
 
     def _connect_source(self) -> None:
         selection = self.source_combo.currentData()
         if selection is None:
             return
-        kind, device = selection
+        self._cancel_reconnect()
         try:
-            if kind == "serial":
-                source = sources.SerialSource(device, self.baud_combo.currentData())
-            elif kind == "replay":
-                source = sources.ReplaySource(device, speed=self._replay_speed())
-            else:
-                source = sources.SimSource(error_rate=self._default_error_rate)
+            source = self._build_source(selection)
         except sources.SourceError as exc:
             QMessageBox.warning(self, "Could not open source", str(exc))
             return
@@ -515,11 +641,22 @@ class MainWindow(QMainWindow):
         self.connect_button.setEnabled(False)
         self.disconnect_button.setEnabled(True)
 
+        if isinstance(source, sources.SerialSource):
+            # Ask outright instead of waiting up to 10 s for the firmware's
+            # periodic announcement, so the board id is on screen immediately.
+            worker.send_command(protocol.cmd_identity())
+
     def _update_source_indicators(self, source: sources.Source | None) -> None:
         """Keep the banner and the title honest about what is driving the view."""
         simulated = isinstance(source, sources.SimSource)
         replaying = isinstance(source, sources.ReplaySource)
         self.sim_banner.setVisible(simulated)
+        self.replay_bar.setVisible(replaying)
+
+        if replaying:
+            self.replay_play_button.setChecked(source.paused)
+            self.replay_loop_check.setChecked(source.loop)
+            self._update_replay_transport()
 
         if simulated:
             self.setWindowTitle(f"{WINDOW_TITLE}  -  [SIMULATION]")
@@ -555,6 +692,7 @@ class MainWindow(QMainWindow):
         self._thread = None
 
     def _disconnect_source(self) -> None:
+        self._cancel_reconnect()
         self._stop_worker()
         self._stop_recording()
         self._source = None
@@ -569,9 +707,43 @@ class MainWindow(QMainWindow):
         return self.speed_spin.value()
 
     def _apply_replay_speed(self, value: float) -> None:
-        source = getattr(self, "_source", None)
-        if isinstance(source, sources.ReplaySource):
-            source.speed = value
+        self._control_replay(lambda source: setattr(source, "speed", value))
+
+    def _control_replay(self, operation) -> None:
+        """Mutate the replay source on the thread that owns it."""
+        if self._worker is None or not isinstance(self._source, sources.ReplaySource):
+            return
+        self._worker.invoke(operation)
+
+    def _toggle_replay_pause(self, paused: bool) -> None:
+        self.replay_play_button.setText("Play" if paused else "Pause")
+        self._control_replay(lambda source: setattr(source, "paused", paused))
+
+    def _restart_replay(self) -> None:
+        self._clear_history()
+        self._control_replay(lambda source: source.restart())
+
+    def _seek_replay(self, value: int) -> None:
+        source = self._source
+        if not isinstance(source, sources.ReplaySource):
+            return
+        target = source.duration_s * value / SEEK_RESOLUTION
+        # Old samples describe a part of the recording we are no longer near, so
+        # keeping them would draw a plot that mixes two different times.
+        self._clear_history()
+        self._control_replay(lambda src: src.seek(target))
+
+    def _update_replay_transport(self) -> None:
+        source = self._source
+        if not isinstance(source, sources.ReplaySource):
+            return
+        elapsed = source.elapsed_s
+        duration = source.duration_s
+        self.replay_time_label.setText(f"{elapsed:,.1f} / {duration:,.1f} s")
+        if not self.replay_slider.isSliderDown():
+            self.replay_slider.blockSignals(True)
+            self.replay_slider.setValue(int(source.progress * SEEK_RESOLUTION))
+            self.replay_slider.blockSignals(False)
 
     def _open_capture(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -587,7 +759,7 @@ class MainWindow(QMainWindow):
 
         self._remember_replay(path)
         self._refresh_ports()
-        index = self.source_combo.findData(("replay", path))
+        index = self._find_selection(("replay", path))
         if index >= 0:
             self.source_combo.setCurrentIndex(index)
 
@@ -647,6 +819,11 @@ class MainWindow(QMainWindow):
         if new_lines:
             self._log_pending.extend(new_lines)
 
+        for message in messages:
+            text = getattr(message, "text", None)
+            if text is not None:
+                self._note_identity(text)
+
         # Keep the control widgets in step with the device's actual state, so a
         # command sent from another terminal is reflected here too.
         status = self.model.latest_status
@@ -657,15 +834,81 @@ class MainWindow(QMainWindow):
                 self.dwell_slider.blockSignals(False)
                 self.dwell_label.setText(f"{status.row_dwell_us} us")
 
+    def _note_identity(self, text: str) -> None:
+        """Record the board id the firmware announces, if this line carries one."""
+        fields = protocol.parse_identity(text)
+        if fields is None:
+            return
+        board = fields.get("board", "?")
+        version = fields.get("version")
+        sha = fields.get("sha")
+        detail = " ".join(part for part in (version, sha) if part)
+        self._board_identity = f"{board}  (fw {detail})" if detail else board
+
     @Slot(object)
     def _on_stats(self, stats: protocol.ParserStats) -> None:
         self._stats = stats
 
     @Slot(str)
     def _on_source_failed(self, message: str) -> None:
+        """A live link died. For a board that usually means the cable moved.
+
+        Tearing the session down permanently is the wrong response: the board is
+        typically back within a second, and during a demo a bumped cable should
+        not be fatal. Replay and the simulator cannot come back, so they stop.
+        """
         self._append_log(f"link error: {message}")
-        self.status_label.setText(f"link error: {message}")
-        self._disconnect_source()
+        selection = self.source_combo.currentData()
+
+        self._stop_worker()
+        self._source = None
+        self.matrix_view.set_stale(True)
+        self.connect_button.setEnabled(True)
+        self.disconnect_button.setEnabled(True)  # stays live, to cancel retrying
+
+        if selection is not None and selection[0] == "serial":
+            self._reconnect_target = selection
+            self._schedule_reconnect()
+        else:
+            self.status_label.setText(f"link error: {message}")
+            self._disconnect_source()
+
+    def _schedule_reconnect(self) -> None:
+        if self._reconnect_target is None:
+            return
+        device = self._reconnect_target[1]
+        self.status_label.setText(
+            f"{device} lost - reconnecting in {self._reconnect_delay:.1f} s"
+        )
+        self._source_name = f"{device} (reconnecting)"
+        self._reconnect_timer.start(int(self._reconnect_delay * 1000))
+
+    def _cancel_reconnect(self) -> None:
+        self._reconnect_timer.stop()
+        self._reconnect_target = None
+        self._reconnect_delay = RECONNECT_MIN_S
+
+    def _attempt_reconnect(self) -> None:
+        target = self._reconnect_target
+        if target is None:
+            return
+
+        device = target[1]
+        # Wait for the port node to reappear before opening it, so a replugged
+        # board is met with a connection rather than a burst of failures.
+        if device in {c.device for c in sources.list_port_candidates()}:
+            try:
+                source = self._build_source(target)
+            except sources.SourceError as exc:
+                self._append_log(f"reconnect failed: {exc}")
+            else:
+                self._cancel_reconnect()
+                self._append_log(f"reconnected to {device}")
+                self._start_worker(source)
+                return
+
+        self._reconnect_delay = min(RECONNECT_MAX_S, self._reconnect_delay * 2)
+        self._schedule_reconnect()
 
     @Slot()
     def _on_replay_finished(self) -> None:
@@ -700,10 +943,20 @@ class MainWindow(QMainWindow):
 
         self._update_status_panel(stale)
         self._update_link_panel()
+        self._update_replay_transport()
         self._flush_log()
 
+        source = self._source
         if self._worker is None:
             self.status_label.setText("disconnected")
+        elif isinstance(source, sources.ReplaySource) and source.paused:
+            self.status_label.setText(f"{self._source_name} - paused")
+        elif isinstance(source, sources.ReplaySource) and source.exhausted:
+            # Distinguish "the recording ran out" from "the link went quiet";
+            # they look identical otherwise and mean entirely different things.
+            self.status_label.setText(
+                f"{self._source_name} - finished, use Restart or drag the slider"
+            )
         elif stale:
             self.status_label.setText(f"{self._source_name} - no telemetry")
         else:
@@ -727,6 +980,8 @@ class MainWindow(QMainWindow):
             flags.append("OVERRUN")
         if status.has_flag(protocol.StatusFlag.PAUSED):
             flags.append("PAUSED")
+        if status.has_flag(protocol.StatusFlag.TX_DROP):
+            flags.append("TX DROP")
 
         glyph = protocol.GLYPH_NAMES[status.glyph_id] if status.glyph_id < len(
             protocol.GLYPH_NAMES
@@ -756,7 +1011,8 @@ class MainWindow(QMainWindow):
         self.status_panel.set_value(
             "Flags",
             " ".join(flags) if flags else "-",
-            warn=status.has_flag(protocol.StatusFlag.OVERRUN),
+            warn=status.has_flag(protocol.StatusFlag.OVERRUN)
+            or status.has_flag(protocol.StatusFlag.TX_DROP),
         )
         self.status_panel.set_value(
             "Refresh rate", f"{status.refresh_hz:,.2f} Hz", warn=stale
@@ -815,8 +1071,45 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------- shutdown
 
+    def _save_layout(self) -> None:
+        settings = QSettings()
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("windowState", self.saveState())
+        settings.setValue("splitter", self.main_splitter.saveState())
+        settings.setValue("plotSplitter", self.plot_splitter.saveState())
+
+    def _restore_layout(self) -> None:
+        """Reapply the last session's geometry, if it still makes sense.
+
+        Guarded rather than trusted: a layout saved on a second monitor that is
+        no longer attached would otherwise open the window off-screen, where it
+        looks like the application failed to start.
+        """
+        settings = QSettings()
+        geometry = settings.value("geometry")
+        if geometry is not None and self.restoreGeometry(geometry):
+            available = self.screen().availableGeometry() if self.screen() else None
+            if available is not None and not available.intersects(self.frameGeometry()):
+                self.resize(1440, 900)
+                self.move(available.topLeft())
+        for key, widget in (
+            ("windowState", None),
+            ("splitter", self.main_splitter),
+            ("plotSplitter", self.plot_splitter),
+        ):
+            state = settings.value(key)
+            if state is None:
+                continue
+            if widget is None:
+                self.restoreState(state)
+            else:
+                widget.restoreState(state)
+
     def closeEvent(self, event) -> None:  # noqa: N802  (Qt naming)
+        self._save_layout()
         self._repaint_timer.stop()
+        self._port_timer.stop()
+        self._reconnect_timer.stop()
         self._stop_worker()
         self._stop_recording()
         super().closeEvent(event)

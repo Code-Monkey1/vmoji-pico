@@ -9,18 +9,29 @@
 //  - No dynamic allocation and no floating point in the per-scan path.
 //  - Frames go to both USB CDC and UART0, so the dashboard works whether the
 //    board is on /dev/ttyACM0 or behind a TTL adapter on GP0/GP1.
+//  - Emitting a frame must not block the scan loop. Both links are fed through
+//    ring buffers: UART0 drains under its TX interrupt, USB drains in bounded
+//    batches from the main loop. Measuring your own timing with a blocking
+//    write means the measurement changes what it measures - the earlier
+//    version of this file cost ~1.4 ms of peak-to-peak jitter on every
+//    reporting interval, which is larger than a row dwell.
 
 #include "telemetry.h"
 
 #include "led-matrix.h"
 #include "telemetry_frame.h"
+#include "vmoji_version.h"
 
 #include "hardware/adc.h"
+#include "hardware/irq.h"
+#include "hardware/sync.h"
 #include "hardware/uart.h"
 #include "pico/stdio.h"
 #include "pico/time.h"
+#include "pico/unique_id.h"
 
 #include <cstdio>
+#include <cstring>
 
 namespace {
 
@@ -36,7 +47,77 @@ inline uart_inst_t *telemetry_uart() { return uart0; }
 constexpr std::uint64_t kStatusIntervalUs = 100000u;      // 10 Hz
 constexpr std::uint64_t kFrameBufIntervalUs = 500000u;    // 2 Hz
 
+// Re-announced rather than sent only at boot, because a host almost always
+// attaches after the board has been powered for a while - and on USB the stack
+// discards anything written before the port is opened.
+constexpr std::uint64_t kIdentityIntervalUs = 10000000u;  // 10 s
+
 constexpr std::uint8_t kTempAdcInput = 4u;  // RP2040 on-die temperature sensor
+
+// Power of two so the wrap is a mask. Sized to hold roughly a second of
+// telemetry, which is far more slack than a healthy link needs and enough to
+// ride out a host that stops reading for a moment.
+constexpr std::size_t kTxRingSize = 1024u;
+constexpr std::size_t kTxRingMask = kTxRingSize - 1u;
+
+// How much to hand to the USB stack per pump. The main loop runs hundreds of
+// times a second, so this is ample throughput while bounding the time any one
+// call can spend inside the CDC write.
+constexpr std::size_t kUsbChunk = 128u;
+
+/**
+ * Single-producer, single-consumer byte ring.
+ *
+ * The scan loop is the only producer and the drain (ISR for UART, main loop for
+ * USB) is the only consumer, so the indices need no lock: each is written by
+ * exactly one side and read by the other. `volatile` plus that discipline is
+ * what makes this safe against an interrupt landing mid-push.
+ */
+class TxRing {
+public:
+    void reset() {
+        head_ = 0;
+        tail_ = 0;
+    }
+
+    std::size_t used() const {
+        return (head_ - tail_) & kTxRingMask;
+    }
+
+    bool empty() const { return head_ == tail_; }
+
+    /** All-or-nothing: a partially written frame is worse than no frame, since
+     *  the host would have to resynchronise past the truncated one. */
+    bool push(const std::uint8_t *data, std::size_t size) {
+        if (size > (kTxRingSize - 1u) - used()) {
+            return false;
+        }
+        std::uint32_t head = head_;
+        for (std::size_t i = 0; i < size; ++i) {
+            buffer_[head] = data[i];
+            head = (head + 1u) & kTxRingMask;
+        }
+        head_ = head;  // publish only once the bytes are in place
+        return true;
+    }
+
+    bool pop(std::uint8_t &out) {
+        if (empty()) {
+            return false;
+        }
+        out = buffer_[tail_];
+        tail_ = (tail_ + 1u) & kTxRingMask;
+        return true;
+    }
+
+private:
+    std::uint8_t buffer_[kTxRingSize];
+    volatile std::uint32_t head_ = 0;
+    volatile std::uint32_t tail_ = 0;
+};
+
+TxRing g_uart_tx;
+TxRing g_usb_tx;
 
 struct IntervalStats {
     std::uint32_t count;
@@ -72,6 +153,7 @@ struct State {
     std::uint64_t last_scan_us;
     std::uint64_t last_status_us;
     std::uint64_t last_framebuf_us;
+    std::uint64_t last_identity_us;
     std::uint32_t scan_count;
     std::uint32_t rx_bytes;
     std::uint16_t cmd_ok;
@@ -81,18 +163,59 @@ struct State {
     std::uint8_t flags;
     std::uint8_t seq;
     vmoji::FrameBufferPayload framebuffer;
+    std::uint16_t tx_dropped;
     bool temp_ready;
 };
 
 State g{};
 
-void write_bytes(const std::uint8_t *data, std::size_t size) {
-    // Raw writes on both links: putchar_raw bypasses the newline translation
-    // that stdio would otherwise apply, which would corrupt binary payloads.
-    for (std::size_t i = 0; i < size; ++i) {
-        putchar_raw(static_cast<int>(data[i]));
+/** Kick the UART TX interrupt if there is anything left to send.
+ *
+ * Guarded because the ISR clears TXIM when it drains the ring: without the
+ * guard, an enable racing that clear would leave bytes sitting in the buffer
+ * with no interrupt scheduled to move them. */
+void uart_tx_kick() {
+    const std::uint32_t ints = save_and_disable_interrupts();
+    if (!g_uart_tx.empty()) {
+        hw_set_bits(&uart_get_hw(telemetry_uart())->imsc, UART_UARTIMSC_TXIM_BITS);
     }
-    uart_write_blocking(telemetry_uart(), data, size);
+    restore_interrupts(ints);
+}
+
+void write_bytes(const std::uint8_t *data, std::size_t size) {
+    // Queue, never block. A full ring means the link cannot keep up, so drop
+    // the whole frame and count it: reporting a gap the host can see beats
+    // stalling the scan loop the telemetry exists to measure.
+    bool queued = g_uart_tx.push(data, size);
+    queued = g_usb_tx.push(data, size) && queued;
+    if (!queued) {
+        if (g.tx_dropped < 0xFFFFu) {
+            ++g.tx_dropped;
+        }
+        g.flags = static_cast<std::uint8_t>(g.flags | VMOJI_FLAG_TX_DROP);
+    }
+    uart_tx_kick();
+}
+
+/** Move queued bytes onto the wire without ever waiting for either link. */
+void pump_links() {
+    uart_tx_kick();
+
+    if (g_usb_tx.empty()) {
+        return;
+    }
+    std::uint8_t chunk[kUsbChunk];
+    std::size_t count = 0;
+    while (count < kUsbChunk && g_usb_tx.pop(chunk[count])) {
+        ++count;
+    }
+    if (count > 0) {
+        // One call for the whole chunk, with CR translation off so binary
+        // payloads survive. The previous per-byte putchar_raw ran the entire
+        // stdio and TinyUSB path once per byte.
+        stdio_put_string(reinterpret_cast<const char *>(chunk),
+                         static_cast<int>(count), false, false);
+    }
 }
 
 void send(vmoji::MsgId id, const void *payload, std::size_t payload_size) {
@@ -160,6 +283,8 @@ void telemetry_init(void) {
     g = State{};
     g.interval.reset();
     g.row_dwell_us = MATRIX_ROW_DWELL_US;
+    g_uart_tx.reset();
+    g_usb_tx.reset();
 
     adc_init();
     adc_set_temp_sensor_enabled(true);
@@ -169,6 +294,7 @@ void telemetry_init(void) {
     g.last_scan_us = now;
     g.last_status_us = now;
     g.last_framebuf_us = now;
+    g.last_identity_us = now;
 }
 
 void telemetry_note_scan(void) {
@@ -225,9 +351,32 @@ void telemetry_reset_counters(void) {
     g.rx_bytes = 0;
     g.cmd_ok = 0;
     g.cmd_err = 0;
+    g.tx_dropped = 0;
+    g.flags = static_cast<std::uint8_t>(g.flags & ~VMOJI_FLAG_TX_DROP);
+}
+
+uint16_t telemetry_tx_dropped(void) { return g.tx_dropped; }
+
+void telemetry_uart_irq(void) {
+    uart_hw_t *hw = uart_get_hw(telemetry_uart());
+    if ((hw->mis & UART_UARTMIS_TXMIS_BITS) == 0u) {
+        return;
+    }
+    while ((hw->fr & UART_UARTFR_TXFF_BITS) == 0u) {
+        std::uint8_t byte;
+        if (!g_uart_tx.pop(byte)) {
+            // Nothing left: stop asking to be interrupted, or this fires
+            // continuously for as long as the FIFO has room.
+            hw_clear_bits(&hw->imsc, UART_UARTIMSC_TXIM_BITS);
+            return;
+        }
+        hw->dr = byte;
+    }
 }
 
 void telemetry_service(void) {
+    pump_links();
+
     const std::uint64_t now = time_us_64();
 
     const std::uint64_t since_status = now - g.last_status_us;
@@ -241,6 +390,11 @@ void telemetry_service(void) {
         send(vmoji::MsgId::FrameBuffer, &g.framebuffer, sizeof(g.framebuffer));
         g.last_framebuf_us = now;
     }
+
+    if (now - g.last_identity_us >= kIdentityIntervalUs) {
+        telemetry_send_identity();
+        g.last_identity_us = now;
+    }
 }
 
 void telemetry_log(const char *text) {
@@ -252,6 +406,19 @@ void telemetry_log(const char *text) {
         ++length;
     }
     send(vmoji::MsgId::Log, text, length);
+}
+
+void telemetry_send_identity(void) {
+    // Fixed "ID " prefix so the host can recognise this without guessing. The
+    // chip serial is the useful part: it names one physical board, which is
+    // what distinguishes a live demo from a convincing simulation.
+    char board_id[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1] = {0};
+    pico_get_unique_board_id_string(board_id, sizeof(board_id));
+
+    char line[96];
+    std::snprintf(line, sizeof(line), "ID vmoji %s sha=%s board=%s",
+                  VMOJI_VERSION, VMOJI_GIT_SHA, board_id);
+    telemetry_log(line);
 }
 
 void telemetry_ack(const char *text) {

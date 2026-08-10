@@ -47,6 +47,7 @@ class StatusFlag(IntEnum):
     ACTIVITY = 0x01
     OVERRUN = 0x02
     PAUSED = 0x04
+    TX_DROP = 0x08  # firmware discarded a frame; a link could not keep up
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +121,11 @@ class Status:
 
     @classmethod
     def unpack(cls, payload: bytes, host_time: float, seq: int) -> "Status":
-        fields = _STATUS_STRUCT.unpack(payload)
+        # unpack_from, not unpack: a longer payload means newer firmware has
+        # appended fields this host does not know about. Decoding the prefix we
+        # do understand keeps an older dashboard usable against a newer board,
+        # which is the whole reason the length is on the wire.
+        fields = _STATUS_STRUCT.unpack_from(payload, 0)
         return cls(host_time, seq, *fields)
 
 
@@ -309,7 +314,7 @@ class FrameParser:
             self.stats.unknown_ids += 1
             return UnknownMessage(now, seq, raw_id, payload)
 
-        if msg_id is MsgId.STATUS and len(payload) == _STATUS_STRUCT.size:
+        if msg_id is MsgId.STATUS and len(payload) >= _STATUS_STRUCT.size:
             return Status.unpack(payload, now, seq)
         if msg_id is MsgId.FRAMEBUFFER and len(payload) >= 8:
             return FrameBuffer.unpack(payload, now, seq)
@@ -427,6 +432,35 @@ def cmd_reset_counters() -> Command:
 
 def cmd_query() -> Command:
     return Command("?", "query configuration")
+
+
+def cmd_identity() -> Command:
+    return Command("I", "report firmware version and board id")
+
+
+IDENTITY_PREFIX = "ID "
+
+
+def parse_identity(text: str) -> dict[str, str] | None:
+    """Decode `ID vmoji <ver> sha=<sha> board=<serial>`, or None.
+
+    The board serial is the point: it names one physical chip, which is how a
+    viewer can tell a live board from the simulator at a glance.
+    """
+    if not text.startswith(IDENTITY_PREFIX):
+        return None
+    fields: dict[str, str] = {}
+    parts = text[len(IDENTITY_PREFIX):].split()
+    if parts and parts[0] == "vmoji":
+        parts = parts[1:]
+        if parts and "=" not in parts[0]:
+            fields["version"] = parts[0]
+            parts = parts[1:]
+    for part in parts:
+        key, sep, value = part.partition("=")
+        if sep:
+            fields[key] = value
+    return fields or None
 
 
 GLYPH_NAMES: tuple[str, ...] = (

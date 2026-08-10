@@ -23,6 +23,7 @@ from __future__ import annotations
 import dataclasses
 import queue
 import time
+from typing import Callable
 
 from PySide6.QtCore import QObject, Signal, Slot
 
@@ -50,8 +51,10 @@ class ReaderWorker(QObject):
         self._capture = capture
         self._parser = protocol.FrameParser()
         self._commands: queue.Queue[bytes] = queue.Queue()
+        self._source_ops: queue.Queue[Callable[[sources.Source], None]] = queue.Queue()
         self._running = True
         self._last_stats_emit = 0.0
+        self._replay_done = False
 
     # -- called from the GUI thread ----------------------------------------
 
@@ -73,6 +76,15 @@ class ReaderWorker(QObject):
         """
         self._commands.put(command.encode())
 
+    def invoke(self, operation: Callable[[sources.Source], None]) -> None:
+        """Run ``operation(source)`` on the worker thread.
+
+        The source belongs to this thread. Replay controls - speed, seek, pause -
+        used to mutate it straight from the GUI thread, which races with the read
+        in progress; queueing the mutation keeps ownership in one place.
+        """
+        self._source_ops.put(operation)
+
     @property
     def parser_stats(self) -> protocol.ParserStats:
         return self._parser.stats
@@ -83,6 +95,7 @@ class ReaderWorker(QObject):
     def run(self) -> None:
         try:
             while self._running:
+                self._drain_source_ops()
                 self._drain_commands()
 
                 try:
@@ -100,8 +113,13 @@ class ReaderWorker(QObject):
                 elif getattr(self._source, "is_finite", False) and getattr(
                     self._source, "exhausted", False
                 ):
-                    self.replayFinished.emit()
-                    break
+                    # Announce the end once, then idle rather than closing the
+                    # source. Reaching the last frame is precisely when someone
+                    # wants to scrub back, and a closed source cannot be seeked.
+                    if not self._replay_done:
+                        self._replay_done = True
+                        self.replayFinished.emit()
+                    time.sleep(0.01)
                 else:
                     # Nothing available: yield so an idle link does not spin.
                     time.sleep(0.002)
@@ -113,6 +131,22 @@ class ReaderWorker(QObject):
                 self._capture.close()
             self._source.close()
             self.finished.emit()
+
+    def _drain_source_ops(self) -> None:
+        while True:
+            try:
+                operation = self._source_ops.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                operation(self._source)
+            except Exception as exc:  # a bad control must not kill acquisition
+                self.sourceFailed.emit(f"source control failed: {exc}")
+                return
+            # A seek or restart can move the playhead back off the end, so the
+            # finished notice must be allowed to fire again next time.
+            if not getattr(self._source, "exhausted", False):
+                self._replay_done = False
 
     def _drain_commands(self) -> None:
         while True:
