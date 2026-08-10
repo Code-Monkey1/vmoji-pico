@@ -67,6 +67,7 @@ STATUS_KEYS = [
 
 LINK_KEYS = [
     "Source",
+    "Board",
     "Telemetry rate",
     "Bytes received",
     "Frames OK",
@@ -90,17 +91,21 @@ def _apply_dark_theme() -> None:
     )
 
 
+WINDOW_TITLE = "vmoji telemetry dashboard"
+
+
 class MainWindow(QMainWindow):
-    def __init__(self, initial_source: str = "sim", port: str | None = None,
+    def __init__(self, initial_selection: tuple[str, str | None] = ("sim", None),
                  baudrate: int = 115200, error_rate: float = 0.0) -> None:
         super().__init__()
         _apply_dark_theme()
-        self.setWindowTitle("vmoji telemetry dashboard")
+        self.setWindowTitle(WINDOW_TITLE)
         self.resize(1440, 900)
 
         self.model = model_module.TelemetryModel()
         self._thread: QThread | None = None
         self._worker: reader_module.ReaderWorker | None = None
+        self._source: sources.Source | None = None
         self._capture: sources.CaptureWriter | None = None
         self._source_name = "disconnected"
         self._last_message_time = 0.0
@@ -108,6 +113,8 @@ class MainWindow(QMainWindow):
         self._log_pending: list[str] = []
         self._default_baud = baudrate
         self._default_error_rate = error_rate
+        self._replay_paths: list[str] = []
+        self._board_identity = "-"
 
         self._build_ui()
         self._build_menu()
@@ -119,10 +126,7 @@ class MainWindow(QMainWindow):
         self._repaint_timer.start(REPAINT_INTERVAL_MS)
 
         self._refresh_ports()
-        if initial_source == "serial" and port:
-            index = self.source_combo.findData(("serial", port))
-            if index >= 0:
-                self.source_combo.setCurrentIndex(index)
+        self._select_source(initial_selection)
         self._connect_source()
 
     # ------------------------------------------------------------------ UI
@@ -139,6 +143,7 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(6, 6, 6, 6)
         outer.setSpacing(6)
         outer.addWidget(self._build_connection_bar())
+        outer.addWidget(self._build_sim_banner())
         outer.addWidget(splitter, 1)
         self.setCentralWidget(container)
 
@@ -148,6 +153,22 @@ class MainWindow(QMainWindow):
         self.statusBar().addWidget(self.status_label, 1)
         self.rate_label = QLabel("")
         self.statusBar().addPermanentWidget(self.rate_label)
+
+    def _build_sim_banner(self) -> QWidget:
+        """An unmissable marker while the simulator is driving the display.
+
+        The simulator is convincing on purpose, which is exactly why an audience
+        must never have to wonder which mode they are looking at.
+        """
+        banner = QLabel("SIMULATION - synthetic data, no hardware connected")
+        banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        banner.setStyleSheet(
+            "background-color: #7a4a12; color: #ffd9a0; font-weight: bold;"
+            " padding: 4px; border-radius: 3px;"
+        )
+        banner.setVisible(False)
+        self.sim_banner = banner
+        return banner
 
     def _build_connection_bar(self) -> QWidget:
         bar = QGroupBox("Link")
@@ -391,16 +412,61 @@ class MainWindow(QMainWindow):
 
     # -------------------------------------------------------- source control
 
+    def _port_entries(self) -> list[tuple[str, tuple[str, str | None]]]:
+        """The combo contents, hardware first and the simulator last.
+
+        Ordering is the whole point: a real board should be what you get by
+        default, and reaching the simulator should be a deliberate act.
+        """
+        entries: list[tuple[str, tuple[str, str | None]]] = []
+        for candidate in sources.list_port_candidates():
+            entries.append((candidate.label, ("serial", candidate.device)))
+        for path in self._replay_paths:
+            entries.append((f"Replay  -  {Path(path).name}", ("replay", path)))
+        entries.append(("Simulator (synthetic data - no hardware)", ("sim", None)))
+        return entries
+
     def _refresh_ports(self) -> None:
         remembered = self.source_combo.currentData()
+        entries = self._port_entries()
+
+        # Rebuilding on a timer would fight the user's selection and drop the
+        # popup, so only touch the widget when the set of ports really changed.
+        current = [
+            (self.source_combo.itemText(i), self.source_combo.itemData(i))
+            for i in range(self.source_combo.count())
+        ]
+        if current == entries:
+            return
+
+        self.source_combo.blockSignals(True)
         self.source_combo.clear()
-        self.source_combo.addItem("Simulator (no hardware required)", ("sim", None))
-        for device, description in sources.list_serial_ports():
-            self.source_combo.addItem(f"{device}  -  {description}", ("serial", device))
+        for label, data in entries:
+            self.source_combo.addItem(label, data)
         if remembered is not None:
             index = self.source_combo.findData(remembered)
             if index >= 0:
                 self.source_combo.setCurrentIndex(index)
+        self.source_combo.blockSignals(False)
+
+    def _select_source(self, selection: tuple[str, str | None]) -> None:
+        kind, device = selection
+        if kind == "replay" and device:
+            self._remember_replay(device)
+            self._refresh_ports()
+
+        index = self.source_combo.findData((kind, device))
+        if index < 0 and kind == "serial" and device:
+            # A port named explicitly that enumeration did not report; honour it
+            # rather than silently substituting something else.
+            self.source_combo.addItem(f"{device}  -  (as specified)", ("serial", device))
+            index = self.source_combo.count() - 1
+        if index >= 0:
+            self.source_combo.setCurrentIndex(index)
+
+    def _remember_replay(self, path: str) -> None:
+        if path not in self._replay_paths:
+            self._replay_paths.append(path)
 
     def _connect_source(self) -> None:
         selection = self.source_combo.currentData()
@@ -426,6 +492,7 @@ class MainWindow(QMainWindow):
 
         self._source_name = source.name
         self._source = source
+        self._update_source_indicators(source)
 
         capture = self._capture if self.record_button.isChecked() else None
         worker = reader_module.ReaderWorker(source, capture)
@@ -448,6 +515,28 @@ class MainWindow(QMainWindow):
         self.connect_button.setEnabled(False)
         self.disconnect_button.setEnabled(True)
 
+    def _update_source_indicators(self, source: sources.Source | None) -> None:
+        """Keep the banner and the title honest about what is driving the view."""
+        simulated = isinstance(source, sources.SimSource)
+        replaying = isinstance(source, sources.ReplaySource)
+        self.sim_banner.setVisible(simulated)
+
+        if simulated:
+            self.setWindowTitle(f"{WINDOW_TITLE}  -  [SIMULATION]")
+        elif replaying:
+            self.setWindowTitle(f"{WINDOW_TITLE}  -  [REPLAY] {source.name}")
+        elif source is not None:
+            self.setWindowTitle(f"{WINDOW_TITLE}  -  {source.name}")
+        else:
+            self.setWindowTitle(WINDOW_TITLE)
+
+        if simulated:
+            self._board_identity = "simulated"
+        elif replaying:
+            self._board_identity = "recorded"
+        else:
+            self._board_identity = "-"
+
     def _stop_worker(self) -> None:
         """Ordered shutdown: flag, quit, join.
 
@@ -468,7 +557,9 @@ class MainWindow(QMainWindow):
     def _disconnect_source(self) -> None:
         self._stop_worker()
         self._stop_recording()
+        self._source = None
         self._source_name = "disconnected"
+        self._update_source_indicators(None)
         self.matrix_view.set_stale(True)
         self.connect_button.setEnabled(True)
         self.disconnect_button.setEnabled(False)
@@ -494,11 +585,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Could not open capture", str(exc))
             return
 
+        self._remember_replay(path)
+        self._refresh_ports()
         index = self.source_combo.findData(("replay", path))
-        if index < 0:
-            self.source_combo.addItem(f"Replay  -  {Path(path).name}", ("replay", path))
-            index = self.source_combo.count() - 1
-        self.source_combo.setCurrentIndex(index)
+        if index >= 0:
+            self.source_combo.setCurrentIndex(index)
 
         self._start_worker(source)
         self._append_log(f"replaying {Path(path).name} ({source.duration_s:.1f} s recorded)")
@@ -680,6 +771,7 @@ class MainWindow(QMainWindow):
         self.link_panel.set_values(
             {
                 "Source": self._source_name,
+                "Board": self._board_identity,
                 "Telemetry rate": f"{self.model.status_rate_hz:.1f} Hz",
                 "Bytes received": f"{stats.bytes_in:,}",
                 "Frames OK": f"{stats.frames_ok:,}",
