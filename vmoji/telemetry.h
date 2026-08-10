@@ -2,8 +2,8 @@
 //
 // The implementation (telemetry.cpp) is C++17 so it can share telemetry_frame.h
 // with the host tooling. This header is plain C with an extern "C" block, so
-// blink.c can call it without the name mangling that would otherwise make the
-// symbols unresolvable at link time.
+// the C translation units can call it without the name mangling that would
+// otherwise make the symbols unresolvable at link time.
 
 #ifndef VMOJI_TELEMETRY_H
 #define VMOJI_TELEMETRY_H

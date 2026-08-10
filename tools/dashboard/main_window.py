@@ -14,6 +14,7 @@ what lets the same UI serve a 10 Hz link or a 10 kHz one.
 
 from __future__ import annotations
 
+import contextlib
 import time
 from pathlib import Path
 
@@ -44,48 +45,18 @@ from PySide6.QtWidgets import (
 )
 
 import model as model_module
+import panels
 import protocol
 import reader as reader_module
+import reconnect
 import sources
+from sources import SourceSelection
 from widgets import KeyValuePanel, MatrixView
 
 REPAINT_INTERVAL_MS = 33  # ~30 FPS
 STALE_AFTER_S = 1.0
 PORT_RESCAN_INTERVAL_MS = 2000
 SEEK_RESOLUTION = 1000  # slider steps across the whole capture
-RECONNECT_MIN_S = 0.5
-RECONNECT_MAX_S = 5.0
-
-STATUS_KEYS = [
-    "Uptime",
-    "Refresh rate",
-    "Scan period (mean)",
-    "Scan period (min)",
-    "Scan period (max)",
-    "Jitter (pk-pk)",
-    "Die temperature",
-    "Row dwell",
-    "Scans",
-    "Glyph",
-    "Commands OK",
-    "Commands rejected",
-    "Flags",
-]
-
-LINK_KEYS = [
-    "Source",
-    "Board",
-    "Telemetry rate",
-    "Bytes received",
-    "Frames OK",
-    "CRC errors",
-    "Bad lengths",
-    "Unknown ids",
-    "Resync bytes",
-    "Sequence gaps",
-    "Frames lost (est.)",
-    "Recording",
-]
 
 
 def _apply_dark_theme() -> None:
@@ -102,7 +73,7 @@ WINDOW_TITLE = "vmoji telemetry dashboard"
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, initial_selection: tuple[str, str | None] = ("sim", None),
+    def __init__(self, initial_selection: SourceSelection = sources.SIMULATOR,
                  baudrate: int = 115200, error_rate: float = 0.0) -> None:
         super().__init__()
         _apply_dark_theme()
@@ -118,11 +89,11 @@ class MainWindow(QMainWindow):
         self._last_message_time = 0.0
         self._stats = protocol.ParserStats()
         self._log_pending: list[str] = []
+        self._sources = sources.SourceFactory(baudrate=baudrate, error_rate=error_rate)
         self._default_baud = baudrate
-        self._default_error_rate = error_rate
         self._replay_paths: list[str] = []
         self._board_identity = "-"
-        self._active_selection: tuple[str, str | None] | None = None
+        self._active_selection: SourceSelection | None = None
 
         self._build_ui()
         self._build_menu()
@@ -138,11 +109,10 @@ class MainWindow(QMainWindow):
         self._port_timer.timeout.connect(self._rescan_if_idle)
         self._port_timer.start(PORT_RESCAN_INTERVAL_MS)
 
+        self._reconnect = reconnect.ReconnectPolicy()
         self._reconnect_timer = QTimer(self)
         self._reconnect_timer.setSingleShot(True)
         self._reconnect_timer.timeout.connect(self._attempt_reconnect)
-        self._reconnect_delay = RECONNECT_MIN_S
-        self._reconnect_target: tuple[str, str | None] | None = None
 
         self._restore_layout()
         self._refresh_ports()
@@ -276,7 +246,7 @@ class MainWindow(QMainWindow):
         self.replay_loop_check = QCheckBox("Loop")
         self.replay_loop_check.setToolTip("Play the capture on repeat, for an unattended demo")
         self.replay_loop_check.toggled.connect(
-            lambda on: self._control_replay(lambda source: setattr(source, "loop", on))
+            lambda on: self._control_replay(lambda source: source.set_loop(on))
         )
         layout.addWidget(self.replay_loop_check)
 
@@ -410,13 +380,13 @@ class MainWindow(QMainWindow):
 
         status_box = QGroupBox("Receiver status")
         status_layout = QVBoxLayout(status_box)
-        self.status_panel = KeyValuePanel(STATUS_KEYS)
+        self.status_panel = KeyValuePanel(panels.STATUS_KEYS)
         status_layout.addWidget(self.status_panel)
         layout.addWidget(status_box)
 
         link_box = QGroupBox("Link health")
         link_layout = QVBoxLayout(link_box)
-        self.link_panel = KeyValuePanel(LINK_KEYS)
+        self.link_panel = KeyValuePanel(panels.LINK_KEYS)
         link_layout.addWidget(self.link_panel)
         layout.addWidget(link_box)
 
@@ -442,7 +412,9 @@ class MainWindow(QMainWindow):
 
         grid.addWidget(QLabel("Row dwell:"), 1, 0)
         self.dwell_slider = QSlider(Qt.Orientation.Horizontal)
-        self.dwell_slider.setRange(50, 2000)
+        # The range the firmware accepts, not a narrower guess: a board set to
+        # 3000 us from a terminal used to read as 2000 here.
+        self.dwell_slider.setRange(protocol.DWELL_MIN_US, protocol.DWELL_MAX_US)
         self.dwell_slider.setValue(400)
         self.dwell_slider.setToolTip(
             "Per-row lit time. Raising it brightens the display and lowers the\n"
@@ -485,7 +457,9 @@ class MainWindow(QMainWindow):
         # saveState keys docks by objectName and silently skips unnamed ones.
         dock.setObjectName("logDock")
         dock.setWidget(self.log_view)
-        dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
+        dock.setAllowedAreas(
+            Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea
+        )
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
         dock.resize(dock.width(), 160)
         self.log_dock = dock
@@ -517,21 +491,25 @@ class MainWindow(QMainWindow):
 
     # -------------------------------------------------------- source control
 
-    def _port_entries(self) -> list[tuple[str, tuple[str, str | None]]]:
+    def _port_entries(self) -> list[tuple[str, SourceSelection]]:
         """The combo contents, hardware first and the simulator last.
 
         Ordering is the whole point: a real board should be what you get by
         default, and reaching the simulator should be a deliberate act.
         """
-        entries: list[tuple[str, tuple[str, str | None]]] = []
+        entries: list[tuple[str, SourceSelection]] = []
         for candidate in sources.list_port_candidates():
-            entries.append((candidate.label, ("serial", candidate.device)))
+            entries.append((candidate.label, SourceSelection("serial", candidate.device)))
         for path in self._replay_paths:
-            entries.append((f"Replay  -  {Path(path).name}", ("replay", path)))
-        entries.append(("Simulator (synthetic data - no hardware)", ("sim", None)))
+            entries.append(
+                (f"Replay  -  {Path(path).name}", SourceSelection("replay", path))
+            )
+        entries.append(
+            ("Simulator (synthetic data - no hardware)", sources.SIMULATOR)
+        )
         return entries
 
-    def _find_selection(self, data: tuple[str, str | None] | None) -> int:
+    def _find_selection(self, data: SourceSelection | None) -> int:
         """Index of a (kind, device) entry, or -1.
 
         QComboBox.findData compares through QVariant, which does not recognise
@@ -567,17 +545,18 @@ class MainWindow(QMainWindow):
             self.source_combo.setCurrentIndex(index)
         self.source_combo.blockSignals(False)
 
-    def _select_source(self, selection: tuple[str, str | None]) -> None:
+    def _select_source(self, selection: SourceSelection) -> None:
+        selection = SourceSelection(*selection)
         kind, device = selection
         if kind == "replay" and device:
             self._remember_replay(device)
             self._refresh_ports()
 
-        index = self._find_selection((kind, device))
+        index = self._find_selection(selection)
         if index < 0 and kind == "serial" and device:
             # A port named explicitly that enumeration did not report; honour it
             # rather than silently substituting something else.
-            self.source_combo.addItem(f"{device}  -  (as specified)", ("serial", device))
+            self.source_combo.addItem(f"{device}  -  (as specified)", selection)
             index = self.source_combo.count() - 1
         if index >= 0:
             self.source_combo.setCurrentIndex(index)
@@ -597,18 +576,16 @@ class MainWindow(QMainWindow):
         if path not in self._replay_paths:
             self._replay_paths.append(path)
 
-    def _build_source(self, selection: tuple[str, str | None]) -> sources.Source:
-        kind, device = selection
-        if kind == "serial":
-            return sources.SerialSource(device, self.baud_combo.currentData())
-        if kind == "replay":
-            return sources.ReplaySource(device, speed=self._replay_speed())
-        return sources.SimSource(error_rate=self._default_error_rate)
+    def _build_source(self, selection: SourceSelection) -> sources.Source:
+        # The baud combo is the live control, so it overrides the launch default.
+        self._sources.baudrate = self.baud_combo.currentData()
+        return self._sources.create(selection, speed=self._replay_speed())
 
     def _connect_source(self) -> None:
         selection = self.source_combo.currentData()
         if selection is None:
             return
+        selection = SourceSelection(*selection)
         self._cancel_reconnect()
         try:
             source = self._build_source(selection)
@@ -619,7 +596,7 @@ class MainWindow(QMainWindow):
         self._start_worker(source, selection)
 
     def _start_worker(
-        self, source: sources.Source, selection: tuple[str, str | None] | None = None
+        self, source: sources.Source, selection: SourceSelection | None = None
     ) -> None:
         self._stop_worker()
         self._clear_history()
@@ -713,10 +690,9 @@ class MainWindow(QMainWindow):
                 worker.replayFinished,
                 worker.finished,
             ):
-                try:
+                # RuntimeError simply means this one had no connections.
+                with contextlib.suppress(RuntimeError):
                     signal.disconnect()
-                except RuntimeError:
-                    pass  # this one had no connections
             worker.stop()
 
         if thread is not None:
@@ -742,29 +718,38 @@ class MainWindow(QMainWindow):
         self.disconnect_button.setEnabled(False)
         self._append_log("disconnected")
 
+    def _replay_source(self) -> sources.ReplaySource | None:
+        """The current source if it is a replay, else None.
+
+        Every transport control needs this same question answered, and asking
+        it in one place keeps the isinstance check from being scattered.
+        """
+        source = self._source
+        return source if isinstance(source, sources.ReplaySource) else None
+
     def _replay_speed(self) -> float:
         return self.speed_spin.value()
 
     def _apply_replay_speed(self, value: float) -> None:
-        self._control_replay(lambda source: setattr(source, "speed", value))
+        self._control_replay(lambda source: source.set_speed(value))
 
     def _control_replay(self, operation) -> None:
         """Mutate the replay source on the thread that owns it."""
-        if self._worker is None or not isinstance(self._source, sources.ReplaySource):
+        if self._worker is None or self._replay_source() is None:
             return
         self._worker.invoke(operation)
 
     def _toggle_replay_pause(self, paused: bool) -> None:
         self.replay_play_button.setText("Play" if paused else "Pause")
-        self._control_replay(lambda source: setattr(source, "paused", paused))
+        self._control_replay(lambda source: source.set_paused(paused))
 
     def _restart_replay(self) -> None:
         self._clear_history()
         self._control_replay(lambda source: source.restart())
 
     def _seek_replay(self, value: int) -> None:
-        source = self._source
-        if not isinstance(source, sources.ReplaySource):
+        source = self._replay_source()
+        if source is None:
             return
         target = source.duration_s * value / SEEK_RESOLUTION
         # Old samples describe a part of the recording we are no longer near, so
@@ -773,8 +758,8 @@ class MainWindow(QMainWindow):
         self._control_replay(lambda src: src.seek(target))
 
     def _update_replay_transport(self) -> None:
-        source = self._source
-        if not isinstance(source, sources.ReplaySource):
+        source = self._replay_source()
+        if source is None:
             return
         elapsed = source.elapsed_s
         duration = source.duration_s
@@ -796,13 +781,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Could not open capture", str(exc))
             return
 
+        selection = SourceSelection("replay", path)
         self._remember_replay(path)
         self._refresh_ports()
-        index = self._find_selection(("replay", path))
+        index = self._find_selection(selection)
         if index >= 0:
             self.source_combo.setCurrentIndex(index)
 
-        self._start_worker(source, ("replay", path))
+        self._start_worker(source, selection)
         self._append_log(f"replaying {Path(path).name} ({source.duration_s:.1f} s recorded)")
 
     # ------------------------------------------------------------ recording
@@ -855,24 +841,29 @@ class MainWindow(QMainWindow):
         """Accumulate only. Drawing happens on the repaint timer."""
         new_lines = self.model.add_messages(messages)
         self._last_message_time = time.monotonic()
-
-        if new_lines:
-            self._log_pending.extend(new_lines)
+        self._log_pending.extend(new_lines)
 
         for message in messages:
-            text = getattr(message, "text", None)
-            if text is not None:
-                self._note_identity(text)
+            if isinstance(message, protocol.TextMessage):
+                self._note_identity(message.text)
 
-        # Keep the control widgets in step with the device's actual state, so a
-        # command sent from another terminal is reflected here too.
+        self._sync_dwell_control()
+
+    def _sync_dwell_control(self) -> None:
+        """Follow the device's actual dwell, so a command sent from another
+        terminal is reflected here too."""
         status = self.model.latest_status
-        if status is not None and not self.dwell_slider.isSliderDown():
-            if status.row_dwell_us != self.dwell_slider.value():
-                self.dwell_slider.blockSignals(True)
-                self.dwell_slider.setValue(min(2000, max(50, status.row_dwell_us)))
-                self.dwell_slider.blockSignals(False)
-                self.dwell_label.setText(f"{status.row_dwell_us} us")
+        if status is None or self.dwell_slider.isSliderDown():
+            return
+        if status.row_dwell_us == self.dwell_slider.value():
+            return
+        clamped = min(
+            protocol.DWELL_MAX_US, max(protocol.DWELL_MIN_US, status.row_dwell_us)
+        )
+        self.dwell_slider.blockSignals(True)
+        self.dwell_slider.setValue(clamped)
+        self.dwell_slider.blockSignals(False)
+        self.dwell_label.setText(f"{status.row_dwell_us} us")
 
     def _note_identity(self, text: str) -> None:
         """Record the board id the firmware announces, if this line carries one."""
@@ -906,40 +897,34 @@ class MainWindow(QMainWindow):
         self.connect_button.setEnabled(True)
         self.disconnect_button.setEnabled(True)  # stays live, to cancel retrying
 
-        if selection is not None and selection[0] == "serial":
-            self._reconnect_target = selection
+        if selection is not None and selection.kind == "serial":
+            self._reconnect.arm(selection)
             self._schedule_reconnect()
         else:
             self.status_label.setText(f"link error: {message}")
             self._disconnect_source()
 
     def _reconnect_message(self) -> str:
-        if self._reconnect_target is None:
-            return "disconnected"
-        device = self._reconnect_target[1]
-        remaining_ms = self._reconnect_timer.remainingTime()
-        if remaining_ms <= 0:
-            return f"{device} lost - retrying now"
-        return f"{device} lost - reconnecting in {remaining_ms / 1000:.1f} s"
+        return self._reconnect.message(self._reconnect_timer.remainingTime())
 
     def _schedule_reconnect(self) -> None:
-        if self._reconnect_target is None:
+        target = self._reconnect.target
+        if target is None:
             return
-        self._reconnect_timer.start(int(self._reconnect_delay * 1000))
-        self._source_name = f"{self._reconnect_target[1]} (reconnecting)"
+        self._reconnect_timer.start(int(self._reconnect.delay_s * 1000))
+        self._source_name = f"{target.device} (reconnecting)"
         self.status_label.setText(self._reconnect_message())
 
     def _cancel_reconnect(self) -> None:
         self._reconnect_timer.stop()
-        self._reconnect_target = None
-        self._reconnect_delay = RECONNECT_MIN_S
+        self._reconnect.reset()
 
     def _attempt_reconnect(self) -> None:
-        target = self._reconnect_target
+        target = self._reconnect.target
         if target is None:
             return
 
-        device = target[1]
+        device = target.device
         # Wait for the port node to reappear before opening it, so a replugged
         # board is met with a connection rather than a burst of failures.
         if device in {c.device for c in sources.list_port_candidates()}:
@@ -955,7 +940,7 @@ class MainWindow(QMainWindow):
                 self._start_worker(source, target)
                 return
 
-        self._reconnect_delay = min(RECONNECT_MAX_S, self._reconnect_delay * 2)
+        self._reconnect.backoff()
         self._schedule_reconnect()
 
     @Slot()
@@ -994,8 +979,8 @@ class MainWindow(QMainWindow):
         self._update_replay_transport()
         self._flush_log()
 
-        source = self._source
-        if self._reconnect_target is not None:
+        replay = self._replay_source()
+        if self._reconnect.active:
             # This branch must come first. The repaint timer owns the status
             # label and rewrites it 30 times a second, so without an explicit
             # state here the countdown set by _schedule_reconnect is erased
@@ -1003,9 +988,9 @@ class MainWindow(QMainWindow):
             self.status_label.setText(self._reconnect_message())
         elif self._worker is None:
             self.status_label.setText("disconnected")
-        elif isinstance(source, sources.ReplaySource) and source.paused:
+        elif replay is not None and replay.paused:
             self.status_label.setText(f"{self._source_name} - paused")
-        elif isinstance(source, sources.ReplaySource) and source.exhausted:
+        elif replay is not None and replay.exhausted:
             # Distinguish "the recording ran out" from "the link went quiet";
             # they look identical otherwise and mean entirely different things.
             self.status_label.setText(
@@ -1026,84 +1011,27 @@ class MainWindow(QMainWindow):
         if status is None:
             self.status_panel.clear_values()
             return
-
-        flags = []
-        if status.has_flag(protocol.StatusFlag.ACTIVITY):
-            flags.append("ACTIVITY")
-        if status.has_flag(protocol.StatusFlag.OVERRUN):
-            flags.append("OVERRUN")
-        if status.has_flag(protocol.StatusFlag.PAUSED):
-            flags.append("PAUSED")
-        if status.has_flag(protocol.StatusFlag.TX_DROP):
-            flags.append("TX DROP")
-
-        glyph = protocol.GLYPH_NAMES[status.glyph_id] if status.glyph_id < len(
-            protocol.GLYPH_NAMES
-        ) else "?"
-
-        self.status_panel.set_values(
-            {
-                "Uptime": f"{status.uptime_s:,.1f} s",
-                "Refresh rate": f"{status.refresh_hz:,.2f} Hz",
-                "Scan period (mean)": f"{status.period_mean_us:,} us",
-                "Scan period (min)": f"{status.period_min_us:,} us",
-                "Scan period (max)": f"{status.period_max_us:,} us",
-                "Jitter (pk-pk)": f"{status.jitter_pp_us:,} us",
-                "Die temperature": f"{status.die_temp_c:.2f} C",
-                "Row dwell": f"{status.row_dwell_us:,} us",
-                "Scans": f"{status.scan_count:,}",
-                "Glyph": f"{status.glyph_id}  {glyph}",
-                "Commands OK": f"{status.cmd_ok:,}",
-                "Commands rejected": f"{status.cmd_err:,}",
-                "Flags": " ".join(flags) if flags else "-",
-            }
-        )
-        # Highlight the numbers that mean something is wrong.
-        self.status_panel.set_value(
-            "Commands rejected", f"{status.cmd_err:,}", warn=status.cmd_err > 0
-        )
-        self.status_panel.set_value(
-            "Flags",
-            " ".join(flags) if flags else "-",
-            warn=status.has_flag(protocol.StatusFlag.OVERRUN)
-            or status.has_flag(protocol.StatusFlag.TX_DROP),
-        )
-        self.status_panel.set_value(
-            "Refresh rate", f"{status.refresh_hz:,.2f} Hz", warn=stale
-        )
+        self.status_panel.set_cells(panels.status_cells(status, stale))
 
     def _update_link_panel(self) -> None:
-        stats = self._stats
         recording = "-"
         if self._capture is not None:
             recording = f"{self._capture.bytes_written / 1024:,.1f} kB"
 
-        self.link_panel.set_values(
-            {
-                "Source": self._source_name,
-                "Board": self._board_identity,
-                "Telemetry rate": f"{self.model.status_rate_hz:.1f} Hz",
-                "Bytes received": f"{stats.bytes_in:,}",
-                "Frames OK": f"{stats.frames_ok:,}",
-                "Bad lengths": f"{stats.length_errors:,}",
-                "Resync bytes": f"{stats.resync_bytes:,}",
-                "Recording": recording,
-            }
-        )
-        # These four are the ones that should draw the eye when non-zero.
-        self.link_panel.set_value("CRC errors", f"{stats.crc_errors:,}", warn=stats.crc_errors > 0)
-        self.link_panel.set_value(
-            "Unknown ids", f"{stats.unknown_ids:,}", warn=stats.unknown_ids > 0
-        )
-        self.link_panel.set_value("Sequence gaps", f"{stats.seq_gaps:,}", warn=stats.seq_gaps > 0)
-        self.link_panel.set_value(
-            "Frames lost (est.)",
-            f"{stats.frames_dropped_estimate:,}",
-            warn=stats.frames_dropped_estimate > 0,
+        self.link_panel.set_cells(
+            panels.link_cells(
+                self._stats,
+                panels.LinkState(
+                    source_name=self._source_name,
+                    board_identity=self._board_identity,
+                    rate_hz=self.model.status_rate_hz,
+                    recording=recording,
+                ),
+            )
         )
 
     def _append_log(self, line: str) -> None:
-        self._log_pending.append(f"[{time.strftime('%H:%M:%S')}] {line}")
+        self._log_pending.append(f"[{model_module.stamp()}] {line}")
 
     def _flush_log(self) -> None:
         """Append log lines in one batch per frame.

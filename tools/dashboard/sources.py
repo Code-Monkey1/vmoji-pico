@@ -18,14 +18,16 @@ Also Qt-free on purpose. Nothing in this module imports PySide6.
 from __future__ import annotations
 
 import bisect
+import contextlib
 import math
 import random
 import struct
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import NamedTuple, Protocol
 
 import protocol
 
@@ -55,44 +57,29 @@ class Source(Protocol):
         ...
 
     @property
-    def is_finite(self) -> bool:
-        """True when the source will eventually run out, as a replay does."""
+    def exhausted(self) -> bool:
+        """True when there is nothing further to read, as at the end of a replay.
+
+        Declared on the interface rather than sniffed for with ``getattr``, so
+        the reader can ask every source the same question. A live link is never
+        exhausted - it is merely quiet, which is a different thing and must not
+        be reported as the end of the stream.
+        """
 
 
-# ---------------------------------------------------------------------------
-# Live serial
-# ---------------------------------------------------------------------------
+class SourceSelection(NamedTuple):
+    """What to connect to: a kind, and the device or path it names.
 
-
-def list_serial_ports(usb_only: bool = True) -> list[tuple[str, str]]:
-    """Available ports as (device, human description).
-
-    Enumerating rather than hardcoding is what makes the app portable: the same
-    build finds ``COM3`` on Windows and ``/dev/ttyACM0`` on Linux.
-
-    ``usb_only`` drops ports with no USB vendor id, which on a typical Linux box
-    means the 32 legacy ``/dev/ttyS*`` 8250 nodes that exist whether or not any
-    hardware is behind them. Burying the one real device in that list is a small
-    thing that makes a tool feel careless. Pass ``usb_only=False`` to reach a
-    genuine motherboard RS-232 port.
+    A ``NamedTuple`` rather than a dataclass because these are stored in Qt item
+    data and compared against each other; tuple equality is what makes that work
+    without teaching Qt about a custom type.
     """
-    try:
-        from serial.tools import list_ports
-    except ImportError:  # pragma: no cover
-        return []
 
-    everything = []
-    usb = []
-    for port in list_ports.comports():
-        label = port.description or "serial port"
-        if port.manufacturer:
-            label = f"{label} ({port.manufacturer})"
-        entry = (port.device, label)
-        everything.append(entry)
-        if port.vid is not None:
-            usb.append(entry)
+    kind: str  # "serial", "replay" or "sim"
+    device: str | None = None
 
-    return sorted(usb if usb_only else everything)
+
+SIMULATOR = SourceSelection("sim", None)
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +278,7 @@ def autodetect_port(baudrate: int = 115200, probe: bool = True,
 class SerialSource:
     """A live USB CDC or UART link, via pyserial."""
 
-    is_finite = False
+    exhausted = False  # a live link is only ever quiet, never finished
 
     def __init__(self, port: str, baudrate: int = 115200, timeout: float = 0.05) -> None:
         try:
@@ -309,18 +296,16 @@ class SerialSource:
         # DTR must stay asserted: pico_stdio_usb gates all CDC output on
         # tud_cdc_connected(), which tracks DTR, so a deasserted line makes the
         # firmware discard every telemetry frame while UART0 keeps working.
-        try:
+        # Not every backend implements the control lines; a port that refuses
+        # them still carries data, so this is advisory rather than required.
+        with contextlib.suppress(OSError, ValueError):
             self._serial.dtr = True
             self._serial.rts = True
-        except (OSError, ValueError):
-            pass
         # Let the firmware observe the line change before discarding whatever
         # the previous session left in the kernel buffer.
         time.sleep(0.2)
-        try:
+        with contextlib.suppress(OSError, ValueError):
             self._serial.reset_input_buffer()
-        except (OSError, ValueError):
-            pass
 
     def read(self, max_bytes: int = 4096) -> bytes:
         try:
@@ -339,10 +324,10 @@ class SerialSource:
             raise SourceError(f"{self._port_name} write failed: {exc}") from exc
 
     def close(self) -> None:
-        try:
+        # Closing is best-effort by definition: this runs on the failure path
+        # for a device that has usually already been unplugged.
+        with contextlib.suppress(Exception):
             self._serial.close()
-        except Exception:
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -365,9 +350,9 @@ class SimSource:
     bad frames is more convincing than asserting that it does.
     """
 
-    is_finite = False
+    exhausted = False
     SETTLE_US = 5
-    ROWS = 8
+    ROWS = protocol.MATRIX_SIZE
     LOOP_OVERHEAD_US = 40
 
     def __init__(self, error_rate: float = 0.0, seed: int | None = None) -> None:
@@ -537,7 +522,11 @@ class SimSource:
                 self._glyph_id = int(argument)
                 self._rows = self._glyph_rows(self._glyph_id)
                 ack = f"OK glyph {self._glyph_id}"
-            elif verb == "D" and argument.isdigit() and 50 <= int(argument) <= 5000:
+            elif (
+                verb == "D"
+                and argument.isdigit()
+                and protocol.DWELL_MIN_US <= int(argument) <= protocol.DWELL_MAX_US
+            ):
                 self._row_dwell_us = int(argument)
                 ack = f"OK dwell {self._row_dwell_us} us"
             elif verb == "B":
@@ -623,7 +612,6 @@ class CaptureWriter:
         )
         self._file.flush()
         self.bytes_written = 0
-        self.records_written = 0
 
     def write(self, data: bytes) -> None:
         if not data:
@@ -632,18 +620,17 @@ class CaptureWriter:
         self._file.write(_RECORD_HEADER.pack(offset, len(data)))
         self._file.write(data)
         self.bytes_written += len(data)
-        self.records_written += 1
 
     @property
     def duration_s(self) -> float:
         return time.monotonic() - self._start
 
     def close(self) -> None:
-        try:
+        # Also best-effort: this runs from closeEvent and from the failure path,
+        # where raising would replace a useful error with a shutdown traceback.
+        with contextlib.suppress(Exception):
             self._file.flush()
             self._file.close()
-        except Exception:
-            pass
 
 
 def read_capture(path: str | Path) -> list[CaptureRecord]:
@@ -682,8 +669,6 @@ class ReplaySource:
     to find the interesting minute.
     """
 
-    is_finite = True
-
     def __init__(self, path: str | Path, speed: float = 1.0, loop: bool = False) -> None:
         self._records = read_capture(path)
         if not self._records:
@@ -717,6 +702,19 @@ class ReplaySource:
     @property
     def exhausted(self) -> bool:
         return self._index >= len(self._records)
+
+    # Named setters rather than attribute writes, because these are invoked
+    # from the GUI thread as callables handed to the reader; a method reference
+    # is checkable, `lambda s: setattr(s, "loop", on)` is not.
+
+    def set_speed(self, speed: float) -> None:
+        self.speed = speed
+
+    def set_paused(self, paused: bool) -> None:
+        self.paused = paused
+
+    def set_loop(self, loop: bool) -> None:
+        self.loop = loop
 
     def restart(self) -> None:
         self.seek(0.0)
@@ -789,3 +787,47 @@ class ReplaySource:
 def concat_capture_bytes(records: Iterable[CaptureRecord]) -> bytes:
     """The whole capture as one blob, for offline parsing and tests."""
     return b"".join(record.data for record in records)
+
+
+# ---------------------------------------------------------------------------
+# Construction
+# ---------------------------------------------------------------------------
+
+
+class SourceFactory:
+    """Turns a ``SourceSelection`` into an open source.
+
+    A registry rather than a chain of ``if kind ==`` tests, so adding the TCP
+    source the ``Source`` protocol already accommodates is a line here instead
+    of an edit inside the window.
+    """
+
+    def __init__(self, baudrate: int = 115200, error_rate: float = 0.0) -> None:
+        self.baudrate = baudrate
+        self.error_rate = error_rate
+        self._builders = {
+            "serial": self._serial,
+            "replay": self._replay,
+            "sim": self._simulator,
+        }
+
+    def create(self, selection: SourceSelection, speed: float = 1.0) -> Source:
+        """Open the selected source. Raises ``SourceError`` if it cannot be."""
+        try:
+            build = self._builders[selection.kind]
+        except KeyError:
+            raise SourceError(f"unknown source kind {selection.kind!r}") from None
+        return build(selection.device, speed)
+
+    def _serial(self, device: str | None, _speed: float) -> Source:
+        if not device:
+            raise SourceError("a serial source needs a port")
+        return SerialSource(device, self.baudrate)
+
+    def _replay(self, device: str | None, speed: float) -> Source:
+        if not device:
+            raise SourceError("a replay source needs a capture path")
+        return ReplaySource(device, speed=speed)
+
+    def _simulator(self, _device: str | None, _speed: float) -> Source:
+        return SimSource(error_rate=self.error_rate)

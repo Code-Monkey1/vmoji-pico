@@ -7,6 +7,8 @@ view.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (
@@ -16,6 +18,9 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+
+import panels
+import protocol
 
 
 class MatrixView(QWidget):
@@ -30,10 +35,15 @@ class MatrixView(QWidget):
     LED_ON = QColor(255, 96, 64)
     LED_OFF = QColor(38, 40, 46)
     GRID = QColor(58, 62, 70)
+    SIZE = protocol.MATRIX_SIZE
+
+    @classmethod
+    def _blank_grid(cls) -> list[list[bool]]:
+        return [[False] * cls.SIZE for _ in range(cls.SIZE)]
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._grid = [[False] * 8 for _ in range(8)]
+        self._grid = self._blank_grid()
         self._stale = True
         # An 8x8 grid stays legible at 10 px a cell, so a low floor here costs
         # nothing and keeps the widget from dictating the window's minimum size.
@@ -53,7 +63,7 @@ class MatrixView(QWidget):
             self.update()
 
     def clear(self) -> None:
-        self._grid = [[False] * 8 for _ in range(8)]
+        self._grid = self._blank_grid()
         self._stale = True
         self.update()
 
@@ -62,7 +72,7 @@ class MatrixView(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         side = min(self.width(), self.height())
-        cell = side / 8.0
+        cell = side / float(self.SIZE)
         x_offset = (self.width() - side) / 2.0
         y_offset = (self.height() - side) / 2.0
         radius = cell * 0.34
@@ -70,8 +80,8 @@ class MatrixView(QWidget):
         painter.setOpacity(opacity)
 
         painter.setPen(QPen(self.GRID, 1))
-        for row in range(8):
-            for col in range(8):
+        for row in range(self.SIZE):
+            for col in range(self.SIZE):
                 centre_x = x_offset + col * cell + cell / 2.0
                 centre_y = y_offset + row * cell + cell / 2.0
                 rect = QRectF(centre_x - radius, centre_y - radius, radius * 2, radius * 2)
@@ -101,7 +111,10 @@ class KeyValuePanel(QFrame):
     widgets at the repaint rate is the classic way to make a Qt dashboard slow.
     """
 
-    def __init__(self, keys: list[str], parent: QWidget | None = None) -> None:
+    NORMAL_STYLE = "color: #e6e8ec;"
+    WARN_STYLE = "color: #ffb347;"
+
+    def __init__(self, keys: Sequence[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.NoFrame)
 
@@ -115,29 +128,36 @@ class KeyValuePanel(QFrame):
         value_font.setStyleHint(QFont.StyleHint.TypeWriter)
 
         self._values: dict[str, QLabel] = {}
+        self._warned: dict[str, bool] = {}
         for row, key in enumerate(keys):
             name = QLabel(key)
             name.setStyleSheet("color: #9aa0aa;")
             value = QLabel("--")
             value.setFont(value_font)
+            value.setStyleSheet(self.NORMAL_STYLE)
             value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             layout.addWidget(name, row, 0)
             layout.addWidget(value, row, 1)
             self._values[key] = value
+            self._warned[key] = False
 
-    def set_value(self, key: str, text: str, *, warn: bool = False) -> None:
+    def set_cell(self, key: str, cell: panels.Cell) -> None:
         label = self._values.get(key)
         if label is None:
             return
-        if label.text() != text:
-            label.setText(text)
-        label.setStyleSheet("color: #ffb347;" if warn else "color: #e6e8ec;")
+        if label.text() != cell.text:
+            label.setText(cell.text)
+        # Only on transition: setStyleSheet reparses and repolishes the widget,
+        # and this runs for every row at the repaint rate.
+        if self._warned[key] != cell.warn:
+            self._warned[key] = cell.warn
+            label.setStyleSheet(self.WARN_STYLE if cell.warn else self.NORMAL_STYLE)
 
-    def set_values(self, values: dict[str, str]) -> None:
-        for key, text in values.items():
-            self.set_value(key, text)
+    def set_cells(self, cells: dict[str, panels.Cell]) -> None:
+        for key, cell in cells.items():
+            self.set_cell(key, cell)
 
     def clear_values(self) -> None:
         for key in self._values:
-            self.set_value(key, "--")
+            self.set_cell(key, panels.Cell("--"))

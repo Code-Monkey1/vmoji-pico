@@ -1,0 +1,27 @@
+# Lint settings for the dashboard.
+#
+# Stated explicitly rather than left to whatever the installed ruff defaults to,
+# so `ruff check` means the same thing on every machine and the `# noqa`
+# directives in the source are checked against rules that are actually on.
+
+line-length = 96
+target-version = "py310"
+
+[lint]
+select = [
+    "E",     # pycodestyle
+    "F",     # pyflakes
+    "I",     # import sorting
+    "UP",    # pyupgrade
+    "B",     # bugbear
+    "SIM",   # simplifiable constructs
+    "N",     # naming, so the Qt overrides have to justify themselves
+    "BLE",   # blind excepts, likewise
+    "RUF",
+]
+ignore = [
+    # Qt signals are attributes whose names are part of the framework's
+    # convention, and renaming them to snake_case would read as foreign in a
+    # PySide codebase. Method overrides are handled individually with a noqa.
+    "N815",
+]

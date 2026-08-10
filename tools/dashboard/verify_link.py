@@ -46,11 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     except sources.SourceError as exc:
         print(f"FAIL  could not open source: {exc}")
         if args.port:
-            ports = sources.list_serial_ports()
-            if ports:
-                print("\nUSB serial ports currently available:")
-                for device, description in ports:
-                    print(f"  {device}\t{description}")
+            candidates = sources.list_port_candidates()
+            if candidates:
+                print("\nUSB serial ports currently available, best first:")
+                for candidate in candidates:
+                    print(f"  {candidate.label}")
                 print("\nIf the port exists but is refused: are you in the 'dialout' group?")
             else:
                 print("\nNo USB serial ports found (legacy /dev/ttyS* nodes are hidden).")

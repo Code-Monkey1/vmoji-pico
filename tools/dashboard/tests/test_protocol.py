@@ -2,7 +2,7 @@
 
 The reference vectors come from the C++ implementation:
 
-    g++ -std=c++17 -Wall -Wextra -I blink tools/protocol_selftest.cpp -o /tmp/selftest
+    g++ -std=c++17 -Wall -Wextra -I vmoji tools/protocol_selftest.cpp -o /tmp/selftest
     /tmp/selftest --vectors
 
 Pinning them here is the point. Two independent implementations of one wire
@@ -15,16 +15,11 @@ Run from tools/dashboard:
 
 from __future__ import annotations
 
-import os
-import sys
-
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import model  # noqa: E402
-import protocol  # noqa: E402
-import sources  # noqa: E402
+import model
+import protocol
+import sources
 
 # --- vectors emitted by tools/protocol_selftest.cpp --------------------------
 

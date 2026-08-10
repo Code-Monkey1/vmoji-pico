@@ -36,7 +36,7 @@
 
 namespace {
 
-// Matches the UART configured in blink.c.
+// Matches the UART configured in uart_link.c.
 //
 // This is a function rather than a `constexpr` constant because the SDK's
 // `uart0` macro expands to a reinterpret_cast of a fixed peripheral address, and
@@ -267,6 +267,22 @@ void send(vmoji::MsgId id, const void *payload, std::size_t payload_size) {
     }
 }
 
+/** Send a NUL-terminated string as a text frame, truncated to fit a payload.
+ *
+ * Bounded by hand rather than with strlen, because a caller that forgets the
+ * terminator must cost one frame, not a walk off the end of RAM.
+ */
+void send_text(vmoji::MsgId id, const char *text) {
+    if (text == nullptr) {
+        return;
+    }
+    std::size_t length = 0;
+    while (text[length] != '\0' && length < vmoji::kMaxPayload) {
+        ++length;
+    }
+    send(id, text, length);
+}
+
 /**
  * RP2040 datasheet: T = 27 - (V - 0.706) / 0.001721, with a 12-bit ADC over a
  * 3.3 V reference. Returned in hundredths of a degree so the wire format stays
@@ -434,16 +450,7 @@ void telemetry_service(void) {
     }
 }
 
-void telemetry_log(const char *text) {
-    if (text == nullptr) {
-        return;
-    }
-    std::size_t length = 0;
-    while (text[length] != '\0' && length < vmoji::kMaxPayload) {
-        ++length;
-    }
-    send(vmoji::MsgId::Log, text, length);
-}
+void telemetry_log(const char *text) { send_text(vmoji::MsgId::Log, text); }
 
 void telemetry_send_identity(void) {
     // Fixed "ID " prefix so the host can recognise this without guessing. The
@@ -458,15 +465,6 @@ void telemetry_send_identity(void) {
     telemetry_log(line);
 }
 
-void telemetry_ack(const char *text) {
-    if (text == nullptr) {
-        return;
-    }
-    std::size_t length = 0;
-    while (text[length] != '\0' && length < vmoji::kMaxPayload) {
-        ++length;
-    }
-    send(vmoji::MsgId::Ack, text, length);
-}
+void telemetry_ack(const char *text) { send_text(vmoji::MsgId::Ack, text); }
 
 }  // extern "C"

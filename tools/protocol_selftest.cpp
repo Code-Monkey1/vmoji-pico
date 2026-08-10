@@ -1,4 +1,4 @@
-// Host-side self-test for blink/telemetry_frame.h.
+// Host-side self-test for vmoji/telemetry_frame.h.
 //
 // Two jobs:
 //
@@ -10,7 +10,7 @@
 //     the bug shows up as "the dashboard is wrong" three weeks later.
 //
 // Build and run:
-//   g++ -std=c++17 -Wall -Wextra -I blink tools/protocol_selftest.cpp -o /tmp/selftest
+//   g++ -std=c++17 -Wall -Wextra -I vmoji tools/protocol_selftest.cpp -o /tmp/selftest
 //   /tmp/selftest              # human-readable checks
 //   /tmp/selftest --vectors    # machine-readable vectors for the Python test
 
