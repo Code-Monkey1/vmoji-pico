@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDockWidget,
-    QScrollArea,
     QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
@@ -35,8 +34,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QSlider,
+    QScrollArea,
     QSizePolicy,
+    QSlider,
     QSpinBox,
     QSplitter,
     QVBoxLayout,
@@ -122,6 +122,7 @@ class MainWindow(QMainWindow):
         self._default_error_rate = error_rate
         self._replay_paths: list[str] = []
         self._board_identity = "-"
+        self._active_selection: tuple[str, str | None] | None = None
 
         self._build_ui()
         self._build_menu()
@@ -281,7 +282,12 @@ class MainWindow(QMainWindow):
 
         self.replay_slider = QSlider(Qt.Orientation.Horizontal)
         self.replay_slider.setRange(0, SEEK_RESOLUTION)
-        self.replay_slider.sliderMoved.connect(self._seek_replay)
+        # valueChanged, not sliderMoved: the latter fires only while dragging, so
+        # a click on the groove or an arrow key would move the handle without
+        # seeking, and the next repaint would snap it back.
+        # _update_replay_transport blocks signals around its own setValue, so
+        # programmatic updates cannot feed back in here.
+        self.replay_slider.valueChanged.connect(self._seek_replay)
         layout.addWidget(self.replay_slider, 1)
 
         self.replay_time_label = QLabel("0.0 / 0.0 s")
@@ -610,16 +616,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Could not open source", str(exc))
             return
 
-        self._start_worker(source)
+        self._start_worker(source, selection)
 
-    def _start_worker(self, source: sources.Source) -> None:
+    def _start_worker(
+        self, source: sources.Source, selection: tuple[str, str | None] | None = None
+    ) -> None:
         self._stop_worker()
         self._clear_history()
 
         self._source_name = source.name
         self._source = source
+        # Remember what we actually opened. The combo box is not a reliable
+        # record of this: the periodic rescan repoints it whenever a port comes
+        # or goes, so by the time a link fails it may name a different device.
+        self._active_selection = selection
         self._update_source_indicators(source)
 
+        # The window owns the writer and keeps it open across worker restarts,
+        # so that a reconnect does not silently end the recording.
         capture = self._capture if self.record_button.isChecked() else None
         worker = reader_module.ReaderWorker(source, capture)
         thread = QThread(self)
@@ -675,21 +689,46 @@ class MainWindow(QMainWindow):
             self._board_identity = "-"
 
     def _stop_worker(self) -> None:
-        """Ordered shutdown: flag, quit, join.
+        """Ordered shutdown: disconnect, flag, quit, join, release.
 
         Letting a QThread be garbage collected while running earns a
         "QThread: Destroyed while thread is still running" warning and can crash,
         so the join is not optional.
         """
-        if self._worker is not None:
-            self._worker.stop()
-        if self._thread is not None:
-            self._thread.quit()
-            if not self._thread.wait(2000):
-                self._thread.terminate()
-                self._thread.wait(500)
+        worker, thread = self._worker, self._thread
+        # Nil the handles first, so anything reached during shutdown sees a
+        # window with no active worker rather than a half-torn-down one.
         self._worker = None
         self._thread = None
+
+        if worker is not None:
+            # Signals are delivered as queued events, so any already sitting in
+            # the event loop would arrive after the next session has started and
+            # be mistaken for its own. One stale sourceFailed is enough to tear
+            # down a healthy connection.
+            for signal in (
+                worker.messagesReady,
+                worker.statsUpdated,
+                worker.sourceFailed,
+                worker.replayFinished,
+                worker.finished,
+            ):
+                try:
+                    signal.disconnect()
+                except RuntimeError:
+                    pass  # this one had no connections
+            worker.stop()
+
+        if thread is not None:
+            thread.quit()
+            if not thread.wait(2000):
+                thread.terminate()
+                thread.wait(500)
+            # Parented to the window, so without this every connect attempt
+            # leaks a thread - and the reconnect loop retries indefinitely.
+            thread.deleteLater()
+        if worker is not None:
+            worker.deleteLater()
 
     def _disconnect_source(self) -> None:
         self._cancel_reconnect()
@@ -763,7 +802,7 @@ class MainWindow(QMainWindow):
         if index >= 0:
             self.source_combo.setCurrentIndex(index)
 
-        self._start_worker(source)
+        self._start_worker(source, ("replay", path))
         self._append_log(f"replaying {Path(path).name} ({source.duration_s:.1f} s recorded)")
 
     # ------------------------------------------------------------ recording
@@ -774,10 +813,13 @@ class MainWindow(QMainWindow):
         Exposed so the app can be launched straight into recording from the
         command line, which is what makes an unattended bench capture possible.
         """
+        if self._capture is not None:
+            self._capture.close()  # never leak a half-written file handle
         self._capture = sources.CaptureWriter(path)
         self.record_button.setChecked(True)
         self._append_log(f"recording to {Path(path).name}")
-        # The worker owns the writer, so restart it to pick the capture up.
+        # A worker is handed the writer when it is constructed, so an already
+        # running one has to be restarted before it will record anything.
         if self._worker is not None:
             self._connect_source()
 
@@ -811,11 +853,9 @@ class MainWindow(QMainWindow):
     @Slot(list)
     def _on_messages(self, messages: list) -> None:
         """Accumulate only. Drawing happens on the repaint timer."""
-        before = len(self.model.log_lines)
-        self.model.add_messages(messages)
+        new_lines = self.model.add_messages(messages)
         self._last_message_time = time.monotonic()
 
-        new_lines = list(self.model.log_lines)[before:]
         if new_lines:
             self._log_pending.extend(new_lines)
 
@@ -858,7 +898,7 @@ class MainWindow(QMainWindow):
         not be fatal. Replay and the simulator cannot come back, so they stop.
         """
         self._append_log(f"link error: {message}")
-        selection = self.source_combo.currentData()
+        selection = self._active_selection
 
         self._stop_worker()
         self._source = None
@@ -873,15 +913,21 @@ class MainWindow(QMainWindow):
             self.status_label.setText(f"link error: {message}")
             self._disconnect_source()
 
+    def _reconnect_message(self) -> str:
+        if self._reconnect_target is None:
+            return "disconnected"
+        device = self._reconnect_target[1]
+        remaining_ms = self._reconnect_timer.remainingTime()
+        if remaining_ms <= 0:
+            return f"{device} lost - retrying now"
+        return f"{device} lost - reconnecting in {remaining_ms / 1000:.1f} s"
+
     def _schedule_reconnect(self) -> None:
         if self._reconnect_target is None:
             return
-        device = self._reconnect_target[1]
-        self.status_label.setText(
-            f"{device} lost - reconnecting in {self._reconnect_delay:.1f} s"
-        )
-        self._source_name = f"{device} (reconnecting)"
         self._reconnect_timer.start(int(self._reconnect_delay * 1000))
+        self._source_name = f"{self._reconnect_target[1]} (reconnecting)"
+        self.status_label.setText(self._reconnect_message())
 
     def _cancel_reconnect(self) -> None:
         self._reconnect_timer.stop()
@@ -904,7 +950,9 @@ class MainWindow(QMainWindow):
             else:
                 self._cancel_reconnect()
                 self._append_log(f"reconnected to {device}")
-                self._start_worker(source)
+                # Pass the target through, so a second failure on the same
+                # device still knows what to retry.
+                self._start_worker(source, target)
                 return
 
         self._reconnect_delay = min(RECONNECT_MAX_S, self._reconnect_delay * 2)
@@ -947,7 +995,13 @@ class MainWindow(QMainWindow):
         self._flush_log()
 
         source = self._source
-        if self._worker is None:
+        if self._reconnect_target is not None:
+            # This branch must come first. The repaint timer owns the status
+            # label and rewrites it 30 times a second, so without an explicit
+            # state here the countdown set by _schedule_reconnect is erased
+            # within one frame and a recovering link just looks disconnected.
+            self.status_label.setText(self._reconnect_message())
+        elif self._worker is None:
             self.status_label.setText("disconnected")
         elif isinstance(source, sources.ReplaySource) and source.paused:
             self.status_label.setText(f"{self._source_name} - paused")

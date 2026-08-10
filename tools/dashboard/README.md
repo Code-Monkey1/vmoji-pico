@@ -101,7 +101,14 @@ current row dwell, glyph id and status flags.
 The flags are `ACTIVITY` (0x01, the activity pixel is lit), `OVERRUN` (0x02, the
 UART receive ring dropped a byte), `PAUSED` (0x04, scanning suspended by
 command) and `TX_DROP` (0x08, a telemetry frame was discarded because a link
-could not keep up). A host that receives a `Status` payload *longer* than the 32
+could not keep up). `TX_DROP` reports a full transmit ring on the UART, or on
+USB while a host is attached; bytes produced with no USB host attached are
+discarded without raising it, so the flag stays meaningful on a UART-only
+setup. A host that is attached but not draining its endpoint is the one gap:
+the write gives up after `PICO_STDIO_USB_STDOUT_TIMEOUT_US` and the loss shows
+as a gap in sequence numbers rather than as this flag.
+
+A host that receives a `Status` payload *longer* than the 32
 bytes it knows about decodes the prefix and ignores the rest, so newer firmware
 can add fields without breaking an older dashboard.
 
@@ -238,7 +245,7 @@ cd tools/dashboard
 .venv/bin/python -m pytest tests -q
 ```
 
-52 tests, no hardware required.
+61 tests, no hardware required.
 
 The protocol tests cover the cross-language vectors, frames split byte-by-byte
 across reads, resynchronisation past a boot banner, CRC rejection and recovery,

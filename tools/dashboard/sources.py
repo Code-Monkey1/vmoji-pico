@@ -609,8 +609,14 @@ class CaptureWriter:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._file = self.path.open("wb")
+        # Callers guard on SourceError, so a bad path has to arrive as one:
+        # an unread-through OSError reaches the Qt event loop as a traceback
+        # and leaves the record button stuck on.
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._file = self.path.open("wb")
+        except OSError as exc:
+            raise SourceError(f"cannot record to {self.path}: {exc}") from exc
         self._start = time.monotonic()
         self._file.write(
             _CAPTURE_HEADER.pack(CAPTURE_MAGIC, CAPTURE_VERSION, 0, time.time())
@@ -641,7 +647,10 @@ class CaptureWriter:
 
 
 def read_capture(path: str | Path) -> list[CaptureRecord]:
-    raw = Path(path).read_bytes()
+    try:
+        raw = Path(path).read_bytes()
+    except OSError as exc:
+        raise SourceError(f"cannot read capture {path}: {exc}") from exc
     if len(raw) < _CAPTURE_HEADER.size:
         raise SourceError("capture file is truncated")
     magic, version, _reserved, _wall = _CAPTURE_HEADER.unpack_from(raw, 0)

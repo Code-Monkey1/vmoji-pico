@@ -349,9 +349,24 @@ def test_restart_returns_to_the_beginning(tmp_path):
 def _app():
     pytest.importorskip("PySide6")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QCoreApplication
     from PySide6.QtWidgets import QApplication
 
-    return QApplication.instance() or QApplication([])
+    app = QApplication.instance() or QApplication([])
+    # Without distinct names the window's QSettings would collide with the real
+    # dashboard's, so a test run would restore, and then overwrite, the
+    # developer's saved window layout.
+    QCoreApplication.setOrganizationName("vmoji-tests")
+    QCoreApplication.setApplicationName("dashboard-tests")
+    return app
+
+
+def _pump(app, seconds: float) -> None:
+    """Run the event loop for a while; the reader lives on another thread."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
 
 
 def test_window_fits_a_small_laptop_screen():
@@ -450,24 +465,259 @@ def test_a_dropped_serial_link_schedules_a_reconnect(monkeypatch):
     """
     app = _app()
     _fake_comports(monkeypatch, [FakePort("/dev/ttyACM0", vid=0x2E8A, pid=0x000A)])
+    import main_window
     from main_window import MainWindow
 
     window = MainWindow(initial_selection=("sim", None))
     try:
+        # Stand in for a live serial session; the port does not exist here, and
+        # what is under test is the response to it dropping.
         window._select_source(("serial", "/dev/ttyACM0"))
+        window._active_selection = ("serial", "/dev/ttyACM0")
+
         window._on_source_failed("device reports readiness to read but returned no data")
 
         assert window._reconnect_target == ("serial", "/dev/ttyACM0")
         assert window._reconnect_timer.isActive()
 
-        # Backoff must be bounded, not unbounded exponential growth.
+        # Backoff must be bounded. Twenty consecutive failures on an unplugged
+        # board must not push the next retry minutes into the future.
         for _ in range(20):
-            window._reconnect_delay = min(
-                window._reconnect_delay * 2, window._reconnect_delay * 2
-            )
+            window._on_source_failed("still gone")
+        assert window._reconnect_delay <= main_window.RECONNECT_MAX_S
+
         window._cancel_reconnect()
         assert window._reconnect_target is None
         assert not window._reconnect_timer.isActive()
     finally:
         window.close()
         app.processEvents()
+
+
+# --- session lifecycle -------------------------------------------------------
+
+
+def test_recording_keeps_running_across_a_reconnect(tmp_path):
+    """A recording outlives the worker that happened to be feeding it.
+
+    The capture used to be owned by the reader thread, so the first reconnect
+    closed the file and every later write went to a closed handle, killing
+    acquisition. That destroys exactly the recording someone wanted after
+    something interesting happened on the bench.
+    """
+    app = _app()
+    from main_window import MainWindow
+
+    window = MainWindow(initial_selection=("sim", None))
+    try:
+        window.show()
+        window.start_recording(str(tmp_path / "session.vmc"))
+        _pump(app, 0.6)
+        before = window._capture.bytes_written
+        assert before > 0, "the simulator produced nothing to record"
+
+        window._connect_source()  # the reconnect that used to end the recording
+        _pump(app, 0.8)
+
+        assert window._capture.bytes_written > before
+        assert window._worker is not None
+        assert window.model.status_count > 0
+
+        window._stop_recording()
+        assert sources.read_capture(tmp_path / "session.vmc")
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_reconnect_targets_the_source_that_died(monkeypatch):
+    """Retry the link that dropped, not whatever the combo box now shows.
+
+    The periodic rescan rewrites the combo, so reading the retry target from it
+    means an unplugged board can send the dashboard chasing a different port.
+    """
+    app = _app()
+    _fake_comports(monkeypatch, [FakePort("/dev/ttyACM0", vid=0x2E8A, pid=0x000A)])
+    from main_window import MainWindow
+
+    window = MainWindow(initial_selection=("sim", None))
+    try:
+        window._active_selection = ("serial", "/dev/ttyACM0")
+
+        window.source_combo.blockSignals(True)
+        window.source_combo.addItem("some other board", ("serial", "/dev/ttyACM9"))
+        window.source_combo.setCurrentIndex(window.source_combo.count() - 1)
+        window.source_combo.blockSignals(False)
+
+        window._on_source_failed("cable yanked")
+
+        assert window.source_combo.currentData() == ("serial", "/dev/ttyACM9")
+        assert window._reconnect_target == ("serial", "/dev/ttyACM0")
+    finally:
+        window._cancel_reconnect()
+        window.close()
+        app.processEvents()
+
+
+def test_the_reconnect_countdown_stays_on_screen():
+    """The repaint timer must not paper over the countdown.
+
+    _repaint runs 30 times a second, so a status line written once at schedule
+    time is invisible; the user just sees "disconnected" and assumes it is dead.
+    """
+    app = _app()
+    from main_window import MainWindow
+
+    window = MainWindow(initial_selection=("sim", None))
+    try:
+        window._active_selection = ("serial", "/dev/ttyACM0")
+        window._on_source_failed("link dropped")
+        window._repaint()
+
+        text = window.status_label.text()
+        assert "reconnect" in text.lower()
+        assert "/dev/ttyACM0" in text
+    finally:
+        window._cancel_reconnect()
+        window.close()
+        app.processEvents()
+
+
+def test_a_stale_worker_cannot_tear_down_the_next_session():
+    """Signals from a stopped worker are queued and arrive late.
+
+    A sourceFailed emitted by the previous worker must not drop the connection
+    that replaced it, which would show up as a reconnect loop on a link that is
+    working perfectly.
+    """
+    app = _app()
+    from main_window import MainWindow
+
+    window = MainWindow(initial_selection=("sim", None))
+    try:
+        window.show()
+        window._connect_source()
+        _pump(app, 0.4)
+        stale = window._worker
+
+        window._connect_source()
+        _pump(app, 0.4)
+        fresh = window._worker
+        assert fresh is not None and fresh is not stale
+
+        stale.sourceFailed.emit("late failure from the previous worker")
+        _pump(app, 0.3)
+
+        assert window._worker is fresh
+        assert window._reconnect_target is None
+        assert not window._reconnect_timer.isActive()
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_reconnecting_does_not_leak_reader_threads():
+    """Every stopped worker and thread has to be released.
+
+    Left undeleted they accumulate for the life of the process, each holding an
+    open serial handle, so a flaky cable slowly exhausts file descriptors.
+    """
+    app = _app()
+    from PySide6.QtCore import QEvent, QThread
+
+    from main_window import MainWindow
+
+    window = MainWindow(initial_selection=("sim", None))
+    try:
+        window.show()
+        _pump(app, 0.2)
+        baseline = len(window.findChildren(QThread))
+
+        for _ in range(5):
+            window._connect_source()
+            _pump(app, 0.15)
+        _pump(app, 0.3)
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+
+        assert len(window.findChildren(QThread)) <= baseline
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_a_groove_click_on_the_replay_slider_seeks(tmp_path):
+    """Seeking must work without dragging the handle.
+
+    sliderMoved only fires during a drag, so clicking the groove or nudging with
+    an arrow key moved the handle and then let the next repaint snap it back.
+    """
+    app = _app()
+    import main_window
+    from main_window import MainWindow
+
+    window = MainWindow(initial_selection=("sim", None))
+    try:
+        window.show()
+        window._start_worker(
+            sources.ReplaySource(_write_capture(tmp_path / "c.vmc"), speed=0.0),
+            ("replay", str(tmp_path / "c.vmc")),
+        )
+        _pump(app, 0.3)
+
+        window.replay_slider.setValue(  # what a groove click amounts to
+            int(main_window.SEEK_RESOLUTION * 0.75)
+        )
+        _pump(app, 0.4)
+
+        assert window._source.progress > 0.5
+    finally:
+        window.close()
+        app.processEvents()
+
+
+# --- error reporting ---------------------------------------------------------
+
+
+def test_an_unreadable_capture_reports_a_source_error(tmp_path):
+    """Callers guard on SourceError; a bare OSError escapes as a traceback."""
+    with pytest.raises(sources.SourceError):
+        sources.read_capture(tmp_path / "no-such-recording.vmc")
+
+
+def test_recording_to_an_unwritable_path_reports_a_source_error(tmp_path):
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_bytes(b"")
+    with pytest.raises(sources.SourceError):
+        sources.CaptureWriter(blocker / "session.vmc")
+
+
+def test_the_device_log_keeps_updating_past_the_scrollback_limit():
+    """The log pane must not go silent once the deque is full.
+
+    The window worked out what was new by diffing the length of a bounded
+    deque, which stops growing at its limit, so the pane froze after 500 lines
+    while telemetry kept arriving.
+    """
+    from model import TelemetryModel
+
+    model = TelemetryModel()
+    limit = model.log_lines.maxlen
+    assert limit is not None
+
+    filler = [
+        protocol.TextMessage(
+            msg_id=protocol.MsgId.LOG, seq=i, host_time=0.0, text=f"line {i}"
+        )
+        for i in range(limit + 10)
+    ]
+    model.add_messages(filler)
+    assert len(model.log_lines) == limit
+
+    more = [
+        protocol.TextMessage(
+            msg_id=protocol.MsgId.LOG, seq=0, host_time=0.0, text="after the limit"
+        )
+    ]
+    appended = model.add_messages(more)
+    assert appended == ["after the limit"] or appended[0].endswith("after the limit")

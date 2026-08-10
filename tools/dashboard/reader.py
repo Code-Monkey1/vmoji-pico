@@ -125,10 +125,18 @@ class ReaderWorker(QObject):
                     time.sleep(0.002)
 
                 self._maybe_emit_stats()
+        except Exception as exc:  # noqa: BLE001 - see below
+            # Anything that is not a SourceError would otherwise kill this
+            # thread silently: the GUI would keep its buttons in the connected
+            # state and simply stop receiving data, which is the hardest kind of
+            # failure to diagnose. Reporting it turns a hang into a reconnect.
+            self.sourceFailed.emit(f"reader stopped: {exc!r}")
         finally:
             self._maybe_emit_stats(force=True)
-            if self._capture is not None:
-                self._capture.close()
+            # The capture is deliberately *not* closed here. It outlives any one
+            # worker - recording continues across a reconnect - so it belongs to
+            # whoever created it. Closing it here left the next worker writing to
+            # a closed file.
             self._source.close()
             self.finished.emit()
 

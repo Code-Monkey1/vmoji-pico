@@ -320,9 +320,16 @@ static void handle_complete_line(const char *line)
     }
 
     switch (*p) {
-    case 'S':
-        telemetry_note_command(process_score_line_from_s(p));
+    case 'S': {
+        // Every other command answers, so silence here reads as a lost link
+        // rather than a rejected score.
+        const bool accepted = process_score_line_from_s(p);
+        if (!accepted) {
+            telemetry_ack("ERR bad score");
+        }
+        telemetry_note_command(accepted);
         return;
+    }
 
     case 'H':
         arm_activity_pulse_us(800000u);
@@ -497,11 +504,10 @@ static void uart_setup(void)
     irq_set_enabled(UART0_IRQ, true);
     uart_set_irqs_enabled(UART_ID, true, false);
 
-    sleep_ms(1000);
-
-    /* Plain-text banner on both links. Binary telemetry starts immediately
-     * afterwards, so this doubles as a test that the host parser can find its
-     * sync word in a stream that begins with unframed ASCII. */
+    /* Plain-text banner, on the UART only; uart_print does not reach the USB
+     * host. Binary telemetry starts immediately afterwards, so this doubles as
+     * a test that the host parser can find its sync word in a stream that
+     * begins with unframed ASCII. */
     uart_print(EOL);
     uart_print("=====================================" EOL);
     uart_print("=========     8x8 VMOJI     =========" EOL);

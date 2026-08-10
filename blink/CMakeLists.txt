@@ -63,7 +63,7 @@ target_include_directories(blink PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/vmoji_gener
 # pull in common dependencies
 # hardware_adc drives the RP2040 on-die temperature sensor used by telemetry.
 # pico_unique_id reports the chip serial, which identifies a specific board.
-target_link_libraries(blink pico_stdlib hardware_adc pico_unique_id)
+target_link_libraries(blink pico_stdlib hardware_adc hardware_watchdog pico_unique_id)
 
 if (PICO_CYW43_SUPPORTED)
     target_link_libraries(blink pico_cyw43_arch_none)
