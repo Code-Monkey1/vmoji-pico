@@ -40,7 +40,6 @@ void telemetry_set_glyph(uint8_t glyph_id);
 /** Per-row lit time used by the scan loop. Reported so the host can correlate
  *  a dwell change with the resulting refresh rate. */
 void telemetry_set_row_dwell(uint16_t microseconds);
-uint16_t telemetry_row_dwell(void);
 
 /** Set or clear a StatusFlag bit (see telemetry_frame.h). */
 void telemetry_set_flag(uint8_t flag, bool on);
@@ -51,9 +50,6 @@ void telemetry_set_framebuffer(const bool *framebuffer);
 
 /** Reset the interval and lifetime counters. */
 void telemetry_reset_counters(void);
-
-/** Frames discarded because a link could not keep up. */
-uint16_t telemetry_tx_dropped(void);
 
 /**
  * Service the UART0 transmit FIFO. Call from the UART0 interrupt handler.

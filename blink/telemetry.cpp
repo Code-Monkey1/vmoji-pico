@@ -27,6 +27,7 @@
 #include "hardware/sync.h"
 #include "hardware/uart.h"
 #include "pico/stdio.h"
+#include "pico/stdio_usb.h"
 #include "pico/time.h"
 #include "pico/unique_id.h"
 
@@ -163,37 +164,62 @@ struct State {
     std::uint8_t flags;
     std::uint8_t seq;
     vmoji::FrameBufferPayload framebuffer;
-    std::uint16_t tx_dropped;
+    std::uint16_t tx_dropped_uart;
+    std::uint16_t tx_dropped_usb;
     bool temp_ready;
 };
 
 State g{};
 
-/** Kick the UART TX interrupt if there is anything left to send.
+/** Start, or restart, transmission of whatever is queued for the UART.
  *
- * Guarded because the ISR clears TXIM when it drains the ring: without the
- * guard, an enable racing that clear would leave bytes sitting in the buffer
- * with no interrupt scheduled to move them. */
+ * The whole thing runs with interrupts off because the ISR pops from the same
+ * ring and clears TXIM as it empties it; interleaving with either would leave
+ * bytes in the buffer with no interrupt scheduled to move them. */
 void uart_tx_kick() {
+    uart_hw_t *hw = uart_get_hw(telemetry_uart());
     const std::uint32_t ints = save_and_disable_interrupts();
-    if (!g_uart_tx.empty()) {
-        hw_set_bits(&uart_get_hw(telemetry_uart())->imsc, UART_UARTIMSC_TXIM_BITS);
+
+    // The PL011 raises TXIM as the FIFO *drains past* its trigger level, so
+    // arming it on an already-empty FIFO never fires and the queue sits there
+    // forever. Writing the first bytes by hand creates the level to fall from;
+    // after that the ISR keeps it fed. Without this the link only came alive
+    // because the boot banner happened to prime the FIFO first.
+    std::uint8_t byte;
+    while ((hw->fr & UART_UARTFR_TXFF_BITS) == 0u && g_uart_tx.pop(byte)) {
+        hw->dr = byte;
     }
+    if (!g_uart_tx.empty()) {
+        hw_set_bits(&hw->imsc, UART_UARTIMSC_TXIM_BITS);
+    }
+
     restore_interrupts(ints);
+}
+
+inline void count_drop(std::uint16_t &counter) {
+    if (counter < 0xFFFFu) {
+        ++counter;
+    }
+    g.flags = static_cast<std::uint8_t>(g.flags | VMOJI_FLAG_TX_DROP);
 }
 
 void write_bytes(const std::uint8_t *data, std::size_t size) {
     // Queue, never block. A full ring means the link cannot keep up, so drop
     // the whole frame and count it: reporting a gap the host can see beats
     // stalling the scan loop the telemetry exists to measure.
-    bool queued = g_uart_tx.push(data, size);
-    queued = g_usb_tx.push(data, size) && queued;
-    if (!queued) {
-        if (g.tx_dropped < 0xFFFFu) {
-            ++g.tx_dropped;
-        }
-        g.flags = static_cast<std::uint8_t>(g.flags | VMOJI_FLAG_TX_DROP);
+    if (!g_uart_tx.push(data, size)) {
+        count_drop(g.tx_dropped_uart);
     }
+
+    // With no USB host attached there is nothing to fall behind, so bytes are
+    // discarded without counting them. Counting them would light TX_DROP
+    // permanently on any UART-only setup and make the flag mean nothing.
+    if (stdio_usb_connected()) {
+        if (!g_usb_tx.push(data, size)) {
+            count_drop(g.tx_dropped_usb);
+        }
+    }
+
     uart_tx_kick();
 }
 
@@ -202,6 +228,14 @@ void pump_links() {
     uart_tx_kick();
 
     if (g_usb_tx.empty()) {
+        return;
+    }
+    if (!stdio_usb_connected()) {
+        // The host went away mid-frame. Discard the remainder rather than let
+        // a full ring make every later frame look like a drop.
+        std::uint8_t discard;
+        while (g_usb_tx.pop(discard)) {
+        }
         return;
     }
     std::uint8_t chunk[kUsbChunk];
@@ -213,6 +247,12 @@ void pump_links() {
         // One call for the whole chunk, with CR translation off so binary
         // payloads survive. The previous per-byte putchar_raw ran the entire
         // stdio and TinyUSB path once per byte.
+        //
+        // Residual gap: a host that is attached but not draining its endpoint
+        // makes this give up after PICO_STDIO_USB_STDOUT_TIMEOUT_US and discard
+        // the chunk silently, so those bytes are lost without raising TX_DROP.
+        // Bounding the wait is the point, and the host sees the resulting gap
+        // in sequence numbers either way.
         stdio_put_string(reinterpret_cast<const char *>(chunk),
                          static_cast<int>(count), false, false);
     }
@@ -320,8 +360,6 @@ void telemetry_set_glyph(uint8_t glyph_id) { g.glyph_id = glyph_id; }
 
 void telemetry_set_row_dwell(uint16_t microseconds) { g.row_dwell_us = microseconds; }
 
-uint16_t telemetry_row_dwell(void) { return g.row_dwell_us; }
-
 void telemetry_set_flag(uint8_t flag, bool on) {
     if (on) {
         g.flags = static_cast<std::uint8_t>(g.flags | flag);
@@ -351,11 +389,10 @@ void telemetry_reset_counters(void) {
     g.rx_bytes = 0;
     g.cmd_ok = 0;
     g.cmd_err = 0;
-    g.tx_dropped = 0;
+    g.tx_dropped_uart = 0;
+    g.tx_dropped_usb = 0;
     g.flags = static_cast<std::uint8_t>(g.flags & ~VMOJI_FLAG_TX_DROP);
 }
-
-uint16_t telemetry_tx_dropped(void) { return g.tx_dropped; }
 
 void telemetry_uart_irq(void) {
     uart_hw_t *hw = uart_get_hw(telemetry_uart());

@@ -110,7 +110,13 @@ class TelemetryModel:
 
     # -- ingest ------------------------------------------------------------
 
-    def add_message(self, message: protocol.Message) -> None:
+    def add_message(self, message: protocol.Message) -> str | None:
+        """Ingest one message, returning the log line it produced, if any.
+
+        Returning the line matters: log_lines is bounded, so once it is full a
+        caller cannot recover what was just added by diffing its length.
+        """
+        line: str | None = None
         if isinstance(message, protocol.Status):
             self._add_status(message)
         elif isinstance(message, protocol.FrameBuffer):
@@ -118,16 +124,22 @@ class TelemetryModel:
             self.framebuffer_count += 1
         elif isinstance(message, protocol.TextMessage):
             tag = "ACK" if message.msg_id is protocol.MsgId.ACK else "LOG"
-            self.log_lines.append(f"[{self._stamp(message.host_time)}] {tag}  {message.text}")
+            line = f"[{self._stamp(message.host_time)}] {tag}  {message.text}"
         elif isinstance(message, protocol.UnknownMessage):
-            self.log_lines.append(
+            line = (
                 f"[{self._stamp(message.host_time)}] ??   id=0x{message.raw_id:02x} "
                 f"len={len(message.payload)} (unrecognised message)"
             )
 
-    def add_messages(self, messages: Iterable[protocol.Message]) -> None:
-        for message in messages:
-            self.add_message(message)
+        if line is not None:
+            self.log_lines.append(line)
+        return line
+
+    def add_messages(self, messages: Iterable[protocol.Message]) -> list[str]:
+        """Ingest a batch, returning every log line appended, in order."""
+        return [
+            line for line in (self.add_message(m) for m in messages) if line is not None
+        ]
 
     def _add_status(self, status: protocol.Status) -> None:
         if self.t0 is None:
