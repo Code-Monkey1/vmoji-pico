@@ -23,7 +23,7 @@ from __future__ import annotations
 import dataclasses
 import queue
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtCore import QObject, Signal, Slot
 
@@ -45,7 +45,9 @@ class ReaderWorker(QObject):
 
     STATS_INTERVAL_S = 0.25
 
-    def __init__(self, source: sources.Source, capture: sources.CaptureWriter | None = None) -> None:
+    def __init__(
+        self, source: sources.Source, capture: sources.CaptureWriter | None = None
+    ) -> None:
         super().__init__()
         self._source = source
         self._capture = capture
@@ -85,10 +87,6 @@ class ReaderWorker(QObject):
         """
         self._source_ops.put(operation)
 
-    @property
-    def parser_stats(self) -> protocol.ParserStats:
-        return self._parser.stats
-
     # -- runs on the worker thread -----------------------------------------
 
     @Slot()
@@ -110,9 +108,7 @@ class ReaderWorker(QObject):
                     messages = self._parser.feed(chunk)
                     if messages:
                         self.messagesReady.emit(messages)
-                elif getattr(self._source, "is_finite", False) and getattr(
-                    self._source, "exhausted", False
-                ):
+                elif self._source.exhausted:
                     # Announce the end once, then idle rather than closing the
                     # source. Reaching the last frame is precisely when someone
                     # wants to scrub back, and a closed source cannot be seeked.
@@ -148,12 +144,12 @@ class ReaderWorker(QObject):
                 return
             try:
                 operation(self._source)
-            except Exception as exc:  # a bad control must not kill acquisition
+            except Exception as exc:  # noqa: BLE001 - a bad control must not kill acquisition
                 self.sourceFailed.emit(f"source control failed: {exc}")
                 return
             # A seek or restart can move the playhead back off the end, so the
             # finished notice must be allowed to fire again next time.
-            if not getattr(self._source, "exhausted", False):
+            if not self._source.exhausted:
                 self._replay_done = False
 
     def _drain_commands(self) -> None:

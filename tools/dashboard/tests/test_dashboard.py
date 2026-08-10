@@ -15,15 +15,12 @@ from __future__ import annotations
 import contextlib
 import os
 import struct
-import sys
 import time
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import protocol  # noqa: E402
-import sources  # noqa: E402
+import protocol
+import sources
 
 
 class FakePort:
@@ -346,158 +343,117 @@ def test_restart_returns_to_the_beginning(tmp_path):
 # --- window presentation -----------------------------------------------------
 
 
-def _app():
-    pytest.importorskip("PySide6")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtCore import QCoreApplication
-    from PySide6.QtWidgets import QApplication
-
-    app = QApplication.instance() or QApplication([])
-    # Without distinct names the window's QSettings would collide with the real
-    # dashboard's, so a test run would restore, and then overwrite, the
-    # developer's saved window layout.
-    QCoreApplication.setOrganizationName("vmoji-tests")
-    QCoreApplication.setApplicationName("dashboard-tests")
-    return app
-
-
-def _pump(app, seconds: float) -> None:
-    """Run the event loop for a while; the reader lives on another thread."""
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        app.processEvents()
-        time.sleep(0.005)
-
-
-def test_window_fits_a_small_laptop_screen():
+def test_window_fits_a_small_laptop_screen(qt_app, make_window):
     """Regression guard on the minimum size.
 
     The dashboard once demanded 986x1186, which does not fit on a 1080p laptop
     at all. A minimum size creeps upward one innocuous widget at a time, so the
     only thing that keeps it down is a test that fails when it grows.
     """
-    app = _app()
-    from main_window import MainWindow
+    window = make_window()
+    window.show()
+    qt_app.processEvents()
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window.show()
-        app.processEvents()
+    hint = window.minimumSizeHint()
+    assert hint.width() <= 900
+    assert hint.height() <= 600
 
-        hint = window.minimumSizeHint()
-        assert hint.width() <= 900
-        assert hint.height() <= 600
-
-        window.resize(900, 600)
-        app.processEvents()
-        assert (window.width(), window.height()) == (900, 600)
-    finally:
-        window.close()
-        app.processEvents()
+    window.resize(900, 600)
+    qt_app.processEvents()
+    assert (window.width(), window.height()) == (900, 600)
 
 
-def test_simulation_banner_marks_synthetic_data(tmp_path):
+def test_simulation_banner_marks_synthetic_data(qt_app, make_window, tmp_path):
     """The banner is the safeguard against demoing the simulator by accident."""
-    app = _app()
-    from main_window import MainWindow
+    window = make_window()
+    window.show()
+    qt_app.processEvents()
+    assert window.sim_banner.isVisible()
+    assert "SIMULATION" in window.windowTitle()
+    assert not window.replay_bar.isVisible()
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window.show()
-        app.processEvents()
-        assert window.sim_banner.isVisible()
-        assert "SIMULATION" in window.windowTitle()
-        assert not window.replay_bar.isVisible()
-
-        window._start_worker(
-            sources.ReplaySource(_write_capture(tmp_path / "c.vmc"), speed=0.0)
-        )
-        app.processEvents()
-        assert not window.sim_banner.isVisible()
-        assert window.replay_bar.isVisible()
-        assert "REPLAY" in window.windowTitle()
-    finally:
-        window.close()
-        app.processEvents()
+    window._start_worker(
+        sources.ReplaySource(_write_capture(tmp_path / "c.vmc"), speed=0.0)
+    )
+    qt_app.processEvents()
+    assert not window.sim_banner.isVisible()
+    assert window.replay_bar.isVisible()
+    assert "REPLAY" in window.windowTitle()
 
 
-def test_hardware_is_listed_first_and_the_simulator_last(monkeypatch):
+def test_hardware_is_listed_first_and_the_simulator_last(make_window, monkeypatch):
     """The simulator stays reachable, but never as the top entry."""
-    app = _app()
     _fake_comports(monkeypatch, [
         FakePort("/dev/ttyUSB0", vid=0x1A86, pid=0x7523),
         FakePort("/dev/ttyACM0", vid=0x2E8A, pid=0x000A),
     ])
-    from main_window import MainWindow
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        entries = [
-            window.source_combo.itemData(index)
-            for index in range(window.source_combo.count())
-        ]
-        assert entries[0] == ("serial", "/dev/ttyACM0")
-        assert entries[-1] == ("sim", None)
-    finally:
-        window.close()
-        app.processEvents()
+    window = make_window()
+
+    entries = [
+        window.source_combo.itemData(index)
+        for index in range(window.source_combo.count())
+    ]
+    assert entries[0] == ("serial", "/dev/ttyACM0")
+    assert entries[-1] == ("sim", None)
 
 
-def test_board_identity_from_a_log_line_reaches_the_link_panel():
-    app = _app()
-    from main_window import MainWindow
+def test_board_identity_from_a_log_line_reaches_the_link_panel(make_window):
+    window = make_window()
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window._note_identity("ID vmoji 1.1.0 sha=5ab4f62a board=E6614C775B59B537")
-        assert "E6614C775B59B537" in window._board_identity
-        assert "1.1.0" in window._board_identity
-    finally:
-        window.close()
-        app.processEvents()
+    window._note_identity("ID vmoji 1.1.0 sha=5ab4f62a board=E6614C775B59B537")
+
+    assert "E6614C775B59B537" in window._board_identity
+    assert "1.1.0" in window._board_identity
 
 
-def test_a_dropped_serial_link_schedules_a_reconnect(monkeypatch):
+def test_the_dwell_slider_covers_the_range_the_firmware_accepts(make_window):
+    """A board driven to 3000 us from a terminal must read as 3000 here.
+
+    The slider used to stop at 2000 while the firmware accepted up to 5000, so
+    the panel quietly misreported any dwell above its own ceiling.
+    """
+    window = make_window()
+
+    assert window.dwell_slider.minimum() == protocol.DWELL_MIN_US
+    assert window.dwell_slider.maximum() == protocol.DWELL_MAX_US
+
+
+def test_a_dropped_serial_link_schedules_a_reconnect(make_window, monkeypatch):
     """A bumped cable must not end the session.
 
     Mid-demo, the board is usually back within a second; tearing the session
     down and making someone re-pick the port is the wrong response.
     """
-    app = _app()
     _fake_comports(monkeypatch, [FakePort("/dev/ttyACM0", vid=0x2E8A, pid=0x000A)])
-    import main_window
-    from main_window import MainWindow
+    import reconnect
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        # Stand in for a live serial session; the port does not exist here, and
-        # what is under test is the response to it dropping.
-        window._select_source(("serial", "/dev/ttyACM0"))
-        window._active_selection = ("serial", "/dev/ttyACM0")
+    window = make_window()
+    # Stand in for a live serial session; the port does not exist here, and
+    # what is under test is the response to it dropping.
+    window._select_source(("serial", "/dev/ttyACM0"))
+    window._active_selection = sources.SourceSelection("serial", "/dev/ttyACM0")
 
-        window._on_source_failed("device reports readiness to read but returned no data")
+    window._on_source_failed("device reports readiness to read but returned no data")
 
-        assert window._reconnect_target == ("serial", "/dev/ttyACM0")
-        assert window._reconnect_timer.isActive()
+    assert window._reconnect.target == ("serial", "/dev/ttyACM0")
+    assert window._reconnect_timer.isActive()
 
-        # Backoff must be bounded. Twenty consecutive failures on an unplugged
-        # board must not push the next retry minutes into the future.
-        for _ in range(20):
-            window._on_source_failed("still gone")
-        assert window._reconnect_delay <= main_window.RECONNECT_MAX_S
+    # Backoff must be bounded. Twenty consecutive failures on an unplugged
+    # board must not push the next retry minutes into the future.
+    for _ in range(20):
+        window._on_source_failed("still gone")
+    assert window._reconnect.delay_s <= reconnect.MAX_DELAY_S
 
-        window._cancel_reconnect()
-        assert window._reconnect_target is None
-        assert not window._reconnect_timer.isActive()
-    finally:
-        window.close()
-        app.processEvents()
+    window._cancel_reconnect()
+    assert window._reconnect.target is None
+    assert not window._reconnect_timer.isActive()
 
 
 # --- session lifecycle -------------------------------------------------------
 
 
-def test_recording_keeps_running_across_a_reconnect(tmp_path):
+def test_recording_keeps_running_across_a_reconnect(make_window, pump, tmp_path):
     """A recording outlives the worker that happened to be feeding it.
 
     The capture used to be owned by the reader thread, so the first reconnect
@@ -505,175 +461,133 @@ def test_recording_keeps_running_across_a_reconnect(tmp_path):
     acquisition. That destroys exactly the recording someone wanted after
     something interesting happened on the bench.
     """
-    app = _app()
-    from main_window import MainWindow
+    window = make_window()
+    window.show()
+    window.start_recording(str(tmp_path / "session.vmc"))
+    pump(0.6)
+    before = window._capture.bytes_written
+    assert before > 0, "the simulator produced nothing to record"
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window.show()
-        window.start_recording(str(tmp_path / "session.vmc"))
-        _pump(app, 0.6)
-        before = window._capture.bytes_written
-        assert before > 0, "the simulator produced nothing to record"
+    window._connect_source()  # the reconnect that used to end the recording
+    pump(0.8)
 
-        window._connect_source()  # the reconnect that used to end the recording
-        _pump(app, 0.8)
+    assert window._capture.bytes_written > before
+    assert window._worker is not None
+    assert window.model.status_count > 0
 
-        assert window._capture.bytes_written > before
-        assert window._worker is not None
-        assert window.model.status_count > 0
-
-        window._stop_recording()
-        assert sources.read_capture(tmp_path / "session.vmc")
-    finally:
-        window.close()
-        app.processEvents()
+    window._stop_recording()
+    assert sources.read_capture(tmp_path / "session.vmc")
 
 
-def test_reconnect_targets_the_source_that_died(monkeypatch):
+def test_reconnect_targets_the_source_that_died(make_window, monkeypatch):
     """Retry the link that dropped, not whatever the combo box now shows.
 
     The periodic rescan rewrites the combo, so reading the retry target from it
     means an unplugged board can send the dashboard chasing a different port.
     """
-    app = _app()
     _fake_comports(monkeypatch, [FakePort("/dev/ttyACM0", vid=0x2E8A, pid=0x000A)])
-    from main_window import MainWindow
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window._active_selection = ("serial", "/dev/ttyACM0")
+    window = make_window()
+    window._active_selection = sources.SourceSelection("serial", "/dev/ttyACM0")
 
-        window.source_combo.blockSignals(True)
-        window.source_combo.addItem("some other board", ("serial", "/dev/ttyACM9"))
-        window.source_combo.setCurrentIndex(window.source_combo.count() - 1)
-        window.source_combo.blockSignals(False)
+    window.source_combo.blockSignals(True)
+    window.source_combo.addItem("some other board", ("serial", "/dev/ttyACM9"))
+    window.source_combo.setCurrentIndex(window.source_combo.count() - 1)
+    window.source_combo.blockSignals(False)
 
-        window._on_source_failed("cable yanked")
+    window._on_source_failed("cable yanked")
 
-        assert window.source_combo.currentData() == ("serial", "/dev/ttyACM9")
-        assert window._reconnect_target == ("serial", "/dev/ttyACM0")
-    finally:
-        window._cancel_reconnect()
-        window.close()
-        app.processEvents()
+    assert window.source_combo.currentData() == ("serial", "/dev/ttyACM9")
+    assert window._reconnect.target == ("serial", "/dev/ttyACM0")
 
 
-def test_the_reconnect_countdown_stays_on_screen():
+def test_the_reconnect_countdown_stays_on_screen(make_window):
     """The repaint timer must not paper over the countdown.
 
     _repaint runs 30 times a second, so a status line written once at schedule
     time is invisible; the user just sees "disconnected" and assumes it is dead.
     """
-    app = _app()
-    from main_window import MainWindow
+    window = make_window()
+    window._active_selection = sources.SourceSelection("serial", "/dev/ttyACM0")
+    window._on_source_failed("link dropped")
+    window._repaint()
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window._active_selection = ("serial", "/dev/ttyACM0")
-        window._on_source_failed("link dropped")
-        window._repaint()
-
-        text = window.status_label.text()
-        assert "reconnect" in text.lower()
-        assert "/dev/ttyACM0" in text
-    finally:
-        window._cancel_reconnect()
-        window.close()
-        app.processEvents()
+    text = window.status_label.text()
+    assert "reconnect" in text.lower()
+    assert "/dev/ttyACM0" in text
 
 
-def test_a_stale_worker_cannot_tear_down_the_next_session():
+def test_a_stale_worker_cannot_tear_down_the_next_session(make_window, pump):
     """Signals from a stopped worker are queued and arrive late.
 
     A sourceFailed emitted by the previous worker must not drop the connection
     that replaced it, which would show up as a reconnect loop on a link that is
     working perfectly.
     """
-    app = _app()
-    from main_window import MainWindow
+    window = make_window()
+    window.show()
+    window._connect_source()
+    pump(0.4)
+    stale = window._worker
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window.show()
-        window._connect_source()
-        _pump(app, 0.4)
-        stale = window._worker
+    window._connect_source()
+    pump(0.4)
+    fresh = window._worker
+    assert fresh is not None and fresh is not stale
 
-        window._connect_source()
-        _pump(app, 0.4)
-        fresh = window._worker
-        assert fresh is not None and fresh is not stale
+    stale.sourceFailed.emit("late failure from the previous worker")
+    pump(0.3)
 
-        stale.sourceFailed.emit("late failure from the previous worker")
-        _pump(app, 0.3)
-
-        assert window._worker is fresh
-        assert window._reconnect_target is None
-        assert not window._reconnect_timer.isActive()
-    finally:
-        window.close()
-        app.processEvents()
+    assert window._worker is fresh
+    assert window._reconnect.target is None
+    assert not window._reconnect_timer.isActive()
 
 
-def test_reconnecting_does_not_leak_reader_threads():
+def test_reconnecting_does_not_leak_reader_threads(qt_app, make_window, pump):
     """Every stopped worker and thread has to be released.
 
     Left undeleted they accumulate for the life of the process, each holding an
     open serial handle, so a flaky cable slowly exhausts file descriptors.
     """
-    app = _app()
     from PySide6.QtCore import QEvent, QThread
 
-    from main_window import MainWindow
+    window = make_window()
+    window.show()
+    pump(0.2)
+    baseline = len(window.findChildren(QThread))
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window.show()
-        _pump(app, 0.2)
-        baseline = len(window.findChildren(QThread))
+    for _ in range(5):
+        window._connect_source()
+        pump(0.15)
+    pump(0.3)
+    qt_app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
 
-        for _ in range(5):
-            window._connect_source()
-            _pump(app, 0.15)
-        _pump(app, 0.3)
-        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        app.processEvents()
-
-        assert len(window.findChildren(QThread)) <= baseline
-    finally:
-        window.close()
-        app.processEvents()
+    assert len(window.findChildren(QThread)) <= baseline
 
 
-def test_a_groove_click_on_the_replay_slider_seeks(tmp_path):
+def test_a_groove_click_on_the_replay_slider_seeks(make_window, pump, tmp_path):
     """Seeking must work without dragging the handle.
 
     sliderMoved only fires during a drag, so clicking the groove or nudging with
     an arrow key moved the handle and then let the next repaint snap it back.
     """
-    app = _app()
     import main_window
-    from main_window import MainWindow
 
-    window = MainWindow(initial_selection=("sim", None))
-    try:
-        window.show()
-        window._start_worker(
-            sources.ReplaySource(_write_capture(tmp_path / "c.vmc"), speed=0.0),
-            ("replay", str(tmp_path / "c.vmc")),
-        )
-        _pump(app, 0.3)
+    window = make_window()
+    window.show()
+    window._start_worker(
+        sources.ReplaySource(_write_capture(tmp_path / "c.vmc"), speed=0.0),
+        sources.SourceSelection("replay", str(tmp_path / "c.vmc")),
+    )
+    pump(0.3)
 
-        window.replay_slider.setValue(  # what a groove click amounts to
-            int(main_window.SEEK_RESOLUTION * 0.75)
-        )
-        _pump(app, 0.4)
+    window.replay_slider.setValue(  # what a groove click amounts to
+        int(main_window.SEEK_RESOLUTION * 0.75)
+    )
+    pump(0.4)
 
-        assert window._source.progress > 0.5
-    finally:
-        window.close()
-        app.processEvents()
+    assert window._source.progress > 0.5
 
 
 # --- error reporting ---------------------------------------------------------

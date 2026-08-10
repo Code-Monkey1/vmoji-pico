@@ -22,10 +22,19 @@ from __future__ import annotations
 
 import collections
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Deque, Iterable
 
 import protocol
+
+
+def stamp() -> str:
+    """The wall-clock prefix shared by every log line the dashboard writes.
+
+    Wall clock, because log lines are read by humans correlating against a bench
+    clock, not against the monotonic timebase used for plotting.
+    """
+    return time.strftime("%H:%M:%S")
 
 
 @dataclass
@@ -35,8 +44,8 @@ class Series:
     label: str
     units: str = ""
     maxlen: int = 12_000
-    t: Deque[float] = field(init=False)
-    v: Deque[float] = field(init=False)
+    t: collections.deque[float] = field(init=False)
+    v: collections.deque[float] = field(init=False)
 
     def __post_init__(self) -> None:
         self.t = collections.deque(maxlen=self.maxlen)
@@ -94,19 +103,17 @@ class TelemetryModel:
         self.period_max_us = Series("Scan period (max)", "us", n)
         self.jitter_pp_us = Series("Jitter (peak-peak)", "us", n)
         self.die_temp_c = Series("Die temperature", "C", n)
-        self.rx_bytes = Series("Bytes received", "B", n)
 
         self.latest_status: protocol.Status | None = None
         self.latest_framebuffer: protocol.FrameBuffer | None = None
-        self.log_lines: Deque[str] = collections.deque(maxlen=500)
+        self.log_lines: collections.deque[str] = collections.deque(maxlen=500)
 
         self.t0: float | None = None
         self.status_count = 0
         self.framebuffer_count = 0
-        self.first_status_time: float | None = None
 
         # Rolling estimate of the telemetry arrival rate, for the status bar.
-        self._status_arrivals: Deque[float] = collections.deque(maxlen=50)
+        self._status_arrivals: collections.deque[float] = collections.deque(maxlen=50)
 
     # -- ingest ------------------------------------------------------------
 
@@ -124,10 +131,10 @@ class TelemetryModel:
             self.framebuffer_count += 1
         elif isinstance(message, protocol.TextMessage):
             tag = "ACK" if message.msg_id is protocol.MsgId.ACK else "LOG"
-            line = f"[{self._stamp(message.host_time)}] {tag}  {message.text}"
+            line = f"[{stamp()}] {tag}  {message.text}"
         elif isinstance(message, protocol.UnknownMessage):
             line = (
-                f"[{self._stamp(message.host_time)}] ??   id=0x{message.raw_id:02x} "
+                f"[{stamp()}] ??   id=0x{message.raw_id:02x} "
                 f"len={len(message.payload)} (unrecognised message)"
             )
 
@@ -144,7 +151,6 @@ class TelemetryModel:
     def _add_status(self, status: protocol.Status) -> None:
         if self.t0 is None:
             self.t0 = status.host_time
-            self.first_status_time = status.host_time
 
         # Plot against seconds since the first sample. Absolute monotonic values
         # are large and make pyqtgraph's axis labels unreadable.
@@ -156,7 +162,6 @@ class TelemetryModel:
         self.period_max_us.append(t, status.period_max_us)
         self.jitter_pp_us.append(t, status.jitter_pp_us)
         self.die_temp_c.append(t, status.die_temp_c)
-        self.rx_bytes.append(t, status.rx_bytes)
 
         self.latest_status = status
         self.status_count += 1
@@ -189,7 +194,6 @@ class TelemetryModel:
             self.period_max_us,
             self.jitter_pp_us,
             self.die_temp_c,
-            self.rx_bytes,
         )
 
     def clear(self) -> None:
@@ -202,9 +206,3 @@ class TelemetryModel:
         self.status_count = 0
         self.framebuffer_count = 0
         self._status_arrivals.clear()
-
-    @staticmethod
-    def _stamp(_host_time: float) -> str:
-        # Wall clock, because log lines are read by humans correlating against
-        # a bench clock, not against the monotonic timebase used for plotting.
-        return time.strftime("%H:%M:%S")

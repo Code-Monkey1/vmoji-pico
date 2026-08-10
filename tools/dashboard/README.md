@@ -66,7 +66,7 @@ production parser.
 
 ## The wire protocol
 
-Defined once, in [`../../blink/telemetry_frame.h`](../../blink/telemetry_frame.h),
+Defined once, in [`../../vmoji/telemetry_frame.h`](../../vmoji/telemetry_frame.h),
 and shaped after GNSS receiver binary protocols such as u-blox UBX and RTCM 3.x:
 
 ```
@@ -131,7 +131,7 @@ and `tests/test_protocol.py` pins them:
 
 ```bash
 # From the repo root: the C++ side, including its own checks
-g++ -std=c++17 -Wall -Wextra -I blink tools/protocol_selftest.cpp -o /tmp/selftest
+g++ -std=c++17 -Wall -Wextra -I vmoji tools/protocol_selftest.cpp -o /tmp/selftest
 /tmp/selftest
 /tmp/selftest --vectors        # hex vectors consumed by the Python tests
 ```
@@ -193,12 +193,12 @@ sudo apt install libxcb-cursor0
 ### Flashing the firmware
 
 ```bash
-cd blink
+cd vmoji
 export PICO_SDK_PATH=$HOME/.pico-sdk/sdk/2.3.0
 export PATH="$HOME/.pico-sdk/toolchain/14_2_Rel1/bin:$PATH"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C build
-# then copy build/blink.uf2 onto the board in BOOTSEL mode, or flash over SWD
+# then copy build/vmoji.uf2 onto the board in BOOTSEL mode, or flash over SWD
 ```
 
 The firmware sends telemetry on **both** USB CDC (`/dev/ttyACM0`) and UART0
@@ -245,7 +245,7 @@ cd tools/dashboard
 .venv/bin/python -m pytest tests -q
 ```
 
-61 tests, no hardware required.
+86 tests, no hardware required.
 
 The protocol tests cover the cross-language vectors, frames split byte-by-byte
 across reads, resynchronisation past a boot banner, CRC rejection and recovery,
@@ -263,26 +263,39 @@ one is a regression guard with a specific history: the minimum had reached
 innocuous widget at a time, so the only thing that keeps it down is a test that
 fails when it grows.
 
+`tests/test_panels.py` covers the logic that was lifted out of the window:
+reconnect backoff and its ceiling, the countdown text, which readout values are
+highlighted, and the `exhausted` question the reader asks every source. None of
+it needs an event loop.
+
 ## Repository layout
 
 | Path | Role |
 |---|---|
-| `blink/telemetry_frame.h` | C++17 framing, `constexpr` CRC table, packed payloads. Compiles for both the Pico and the host |
-| `blink/telemetry_flags.h` | Status flag bits, plain C, the single definition all three languages read |
-| `blink/telemetry.h` | `extern "C"` interface so `blink.c` can call the C++ emitter |
-| `blink/telemetry.cpp` | The emitter: per-scan statistics, die temperature, frame output |
-| `blink/blink.c` | Matrix scan loop, IRQ-driven UART ring buffer, command handling |
+| `vmoji/telemetry_frame.h` | C++17 framing, `constexpr` CRC table, packed payloads. Compiles for both the Pico and the host |
+| `vmoji/telemetry_flags.h` | Status flag bits, plain C, the single definition all three languages read |
+| `vmoji/telemetry.h` | `extern "C"` interface so the C sources can call the C++ emitter |
+| `vmoji/telemetry.cpp` | The emitter: per-scan statistics, die temperature, frame output |
+| `vmoji/main.c` | `main` and the scan loop, and nothing else |
+| `vmoji/matrix.c` | Pin mapping, the multiplexed scan, glyphs, digits, activity pixel |
+| `vmoji/uart_link.c` | UART0 bring-up, the RX ring and its interrupt handler, boot banner |
+| `vmoji/commands.c` | Line assembly and the command dispatch table |
 | `tools/protocol_selftest.cpp` | Host self-test and reference vector generator |
-| `tools/dashboard/protocol.py` | Parser, messages, statistics. Qt-free |
-| `tools/dashboard/sources.py` | Serial, simulator, replay sources; capture format. Qt-free |
+| `tools/dashboard/protocol.py` | Parser, messages, statistics, shared constants. Qt-free |
+| `tools/dashboard/sources.py` | Serial, simulator, replay sources; capture format; source factory. Qt-free |
 | `tools/dashboard/model.py` | Bounded time series. Qt-free |
+| `tools/dashboard/panels.py` | What each readout row says, and when it is highlighted. Qt-free |
+| `tools/dashboard/reconnect.py` | Retry target and bounded backoff. Qt-free |
 | `tools/dashboard/reader.py` | `QThread` worker |
 | `tools/dashboard/widgets.py` | LED matrix view, key/value panel |
 | `tools/dashboard/main_window.py` | Layout, wiring, repaint loop |
 | `tools/dashboard/app.py` | CLI entry point |
 
-The Qt-free boundary is deliberate: the parser, the sources and the model are
-plain Python and testable with plain pytest, and the Qt layer on top is thin.
+The Qt-free boundary is deliberate: the parser, the sources, the model, the
+panel formatting and the reconnect policy are plain Python and testable with
+plain pytest, and the Qt layer on top is thin. The firmware is split the same
+way, one job per translation unit, so the timed scan loop can be read without
+the command grammar in the way.
 
 ## Things worth knowing
 

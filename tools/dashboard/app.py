@@ -72,21 +72,21 @@ def _print_ports() -> int:
     return 0
 
 
-def resolve_initial_source(args: argparse.Namespace) -> tuple[str, str | None]:
+def resolve_initial_source(args: argparse.Namespace) -> sources.SourceSelection:
     """Decide what to connect to before any window exists.
 
     Explicit flags win; otherwise we look for hardware and only fall back to the
     simulator when there is genuinely nothing to talk to.
     """
     if args.sim:
-        return ("sim", None)
+        return sources.SIMULATOR
     if args.port:
-        return ("serial", args.port)
+        return sources.SourceSelection("serial", args.port)
 
     candidate = sources.autodetect_port(baudrate=args.baud, probe=not args.no_probe)
     if candidate is not None:
         print(f"found {candidate.label}")
-        return ("serial", candidate.device)
+        return sources.SourceSelection("serial", candidate.device)
 
     for serial_number in sources.detect_bootsel_boards():
         print(f"a board is in BOOTSEL (sn={serial_number}); it is not running firmware")
@@ -99,7 +99,7 @@ def resolve_initial_source(args: argparse.Namespace) -> tuple[str, str | None]:
     else:
         print("no board detected")
     print("falling back to the simulator; pass --sim to select it deliberately")
-    return ("sim", None)
+    return sources.SIMULATOR
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -108,7 +108,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_ports:
         return _print_ports()
 
-    selection = ("replay", args.replay) if args.replay else resolve_initial_source(args)
+    selection = (
+        sources.SourceSelection("replay", args.replay)
+        if args.replay
+        else resolve_initial_source(args)
+    )
 
     app = QApplication(sys.argv[:1])
     app.setApplicationName("vmoji telemetry dashboard")
