@@ -22,6 +22,7 @@ import random
 import struct
 import time
 from dataclasses import dataclass
+from enum import IntEnum
 from pathlib import Path
 from typing import Iterable, Protocol
 
@@ -93,6 +94,199 @@ def list_serial_ports(usb_only: bool = True) -> list[tuple[str, str]]:
     return sorted(usb if usb_only else everything)
 
 
+# ---------------------------------------------------------------------------
+# Device detection
+#
+# A demo should never quietly fall back to synthetic data, so the app has to be
+# able to tell a real board from any other USB serial device on the machine.
+# These are the identifiers the RP2040 family actually presents.
+# ---------------------------------------------------------------------------
+
+RASPBERRY_PI_VID = 0x2E8A
+PID_PICO_STDIO = 0x000A     # firmware running, telemetry on its own USB CDC
+PID_BOOTSEL = 0x0003        # RP2 boot ROM: mass storage, firmware not running
+PID_DEBUG_PROBE = 0x000C    # CMSIS-DAP; its second interface bridges UART0
+
+
+class PortPriority(IntEnum):
+    """Connection preference. Lower sorts first."""
+
+    PICO_CDC = 0      # the board itself
+    DEBUG_PROBE = 1   # the board, seen through the probe's UART bridge
+    OTHER_USB = 2     # some other USB serial device; might be a board on a TTL adapter
+    UNKNOWN = 3       # no USB vendor id at all, typically a legacy 8250 node
+
+
+@dataclass(frozen=True)
+class PortCandidate:
+    device: str
+    description: str
+    priority: PortPriority
+    vid: int | None = None
+    pid: int | None = None
+    serial_number: str | None = None
+
+    @property
+    def is_pico(self) -> bool:
+        return self.priority is PortPriority.PICO_CDC
+
+    @property
+    def is_hardware(self) -> bool:
+        """True when this is a Raspberry Pi device rather than a generic port."""
+        return self.priority in (PortPriority.PICO_CDC, PortPriority.DEBUG_PROBE)
+
+    @property
+    def label(self) -> str:
+        kind = {
+            PortPriority.PICO_CDC: "Raspberry Pi Pico",
+            PortPriority.DEBUG_PROBE: "Debug Probe (UART bridge)",
+            PortPriority.OTHER_USB: self.description,
+            PortPriority.UNKNOWN: self.description,
+        }[self.priority]
+        return f"{self.device}  -  {kind}"
+
+
+def classify_port(vid: int | None, pid: int | None) -> PortPriority:
+    if vid == RASPBERRY_PI_VID and pid == PID_PICO_STDIO:
+        return PortPriority.PICO_CDC
+    if vid == RASPBERRY_PI_VID and pid == PID_DEBUG_PROBE:
+        return PortPriority.DEBUG_PROBE
+    if vid is not None:
+        return PortPriority.OTHER_USB
+    return PortPriority.UNKNOWN
+
+
+def list_port_candidates(include_non_usb: bool = False) -> list[PortCandidate]:
+    """Every serial port, classified and ranked best-first.
+
+    Ranking rather than filtering: an unrecognised adapter is still offered, it
+    just sorts below a board we can positively identify.
+    """
+    try:
+        from serial.tools import list_ports
+    except ImportError:  # pragma: no cover
+        return []
+
+    candidates: list[PortCandidate] = []
+    for port in list_ports.comports():
+        priority = classify_port(port.vid, port.pid)
+        if priority is PortPriority.UNKNOWN and not include_non_usb:
+            continue
+        description = port.description or "serial port"
+        if port.manufacturer and port.manufacturer not in description:
+            description = f"{description} ({port.manufacturer})"
+        candidates.append(
+            PortCandidate(
+                device=port.device,
+                description=description,
+                priority=priority,
+                vid=port.vid,
+                pid=port.pid,
+                serial_number=port.serial_number,
+            )
+        )
+
+    candidates.sort(key=lambda c: (c.priority, c.device))
+    return candidates
+
+
+def detect_bootsel_boards() -> list[str]:
+    """Serial numbers of boards sitting in BOOTSEL.
+
+    A board in BOOTSEL enumerates as mass storage, so it never appears as a
+    serial port. Detecting it separately turns the single most common bring-up
+    mistake into a specific message instead of "no board found".
+
+    Linux-only via sysfs, which avoids adding a USB dependency for what is a
+    diagnostic nicety. Returns an empty list everywhere else.
+    """
+    root = Path("/sys/bus/usb/devices")
+    if not root.is_dir():
+        return []
+
+    found: list[str] = []
+    for entry in sorted(root.iterdir()):
+        try:
+            vid = (entry / "idVendor").read_text().strip()
+            pid = (entry / "idProduct").read_text().strip()
+        except (OSError, ValueError):
+            continue
+        if int(vid, 16) == RASPBERRY_PI_VID and int(pid, 16) == PID_BOOTSEL:
+            try:
+                serial_number = (entry / "serial").read_text().strip()
+            except OSError:
+                serial_number = entry.name
+            found.append(serial_number)
+    return found
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    """What a short listen on a port actually produced."""
+
+    device: str
+    frames_ok: int
+    bytes_in: int
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.frames_ok > 0
+
+
+def probe_port(device: str, baudrate: int = 115200, timeout: float = 1.5) -> ProbeResult:
+    """Listen briefly and report whether real telemetry is arriving.
+
+    Identifying a port by its USB id says a board is plugged in, not that it is
+    running our firmware. Confirming an actual decoded frame before committing
+    is what stops the app from latching onto a board in a stuck state, or onto
+    an unrelated adapter, and then showing an empty plot.
+    """
+    try:
+        source = SerialSource(device, baudrate)
+    except SourceError as exc:
+        return ProbeResult(device, 0, 0, str(exc))
+
+    parser = protocol.FrameParser()
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            chunk = source.read(4096)
+            if chunk:
+                for _ in parser.feed(chunk):
+                    pass
+                if parser.stats.frames_ok > 0:
+                    break
+            else:
+                time.sleep(0.005)
+    except SourceError as exc:
+        return ProbeResult(device, parser.stats.frames_ok, parser.stats.bytes_in, str(exc))
+    finally:
+        source.close()
+
+    return ProbeResult(device, parser.stats.frames_ok, parser.stats.bytes_in)
+
+
+def autodetect_port(baudrate: int = 115200, probe: bool = True,
+                    timeout: float = 1.5) -> PortCandidate | None:
+    """The best port that is actually streaming, or None.
+
+    With ``probe`` disabled this returns the highest-ranked candidate without
+    opening it, which is the right behaviour when the caller only wants a
+    default selection rather than a guarantee.
+    """
+    candidates = list_port_candidates()
+    if not candidates:
+        return None
+    if not probe:
+        return candidates[0]
+
+    for candidate in candidates:
+        if probe_port(candidate.device, baudrate, timeout).ok:
+            return candidate
+    return None
+
+
 class SerialSource:
     """A live USB CDC or UART link, via pyserial."""
 
@@ -111,13 +305,16 @@ class SerialSource:
         except Exception as exc:
             raise SourceError(f"could not open {port}: {exc}") from exc
 
-        # The RP2040's USB CDC stack resets when DTR toggles, and a stale RX
-        # buffer would otherwise hand the parser bytes from a previous session.
+        # DTR must stay asserted: pico_stdio_usb gates all CDC output on
+        # tud_cdc_connected(), which tracks DTR, so a deasserted line makes the
+        # firmware discard every telemetry frame while UART0 keeps working.
         try:
-            self._serial.dtr = False
-            self._serial.rts = False
+            self._serial.dtr = True
+            self._serial.rts = True
         except (OSError, ValueError):
             pass
+        # Let the firmware observe the line change before discarding whatever
+        # the previous session left in the kernel buffer.
         time.sleep(0.2)
         try:
             self._serial.reset_input_buffer()
