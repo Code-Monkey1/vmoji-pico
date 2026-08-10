@@ -35,7 +35,9 @@ class MatrixView(QWidget):
         super().__init__(parent)
         self._grid = [[False] * 8 for _ in range(8)]
         self._stale = True
-        self.setMinimumSize(150, 150)
+        # An 8x8 grid stays legible at 10 px a cell, so a low floor here costs
+        # nothing and keeps the widget from dictating the window's minimum size.
+        self.setMinimumSize(80, 80)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_grid(self, grid: list[list[bool]]) -> None:

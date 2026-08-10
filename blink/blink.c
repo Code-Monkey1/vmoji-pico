@@ -9,6 +9,11 @@
 #include "hardware/uart.h"
 #include "hardware/irq.h"
 #include "hardware/sync.h"
+#include "hardware/watchdog.h"
+
+/* Generous next to a ~3 ms scan: long enough that a slow interval is never
+ * mistaken for a hang, short enough that a real lockup recovers on its own. */
+#define WATCHDOG_TIMEOUT_MS 2000
 
 #define UART_ID uart0
 #define BAUD_RATE 115200
@@ -22,8 +27,11 @@ static volatile uint32_t uart_rx_head;
 static volatile uint32_t uart_rx_tail;
 
 #define LINE_MAX 48
+#define LINE_IDLE_RESET_US 250000ULL
 static char line_buf[LINE_MAX];
 static size_t line_len;
+static bool line_overflow;
+static uint64_t line_last_byte_us;
 
 static bool frameBuffer[NB_ROW][NB_COL];
 
@@ -182,6 +190,9 @@ static void uart0_irq_handler(void)
         uint8_t ch = (uint8_t)uart_getc(UART_ID);
         uart_rx_push(ch);
     }
+    /* The same vector carries the transmit interrupt that drains queued
+     * telemetry, so the emitter never has to block the scan loop. */
+    telemetry_uart_irq();
 }
 
 static void framebuffer_clear(void)
@@ -299,6 +310,7 @@ static bool process_score_line_from_s(const char *p)
  *   P               toggle scan pause
  *   Z               reset counters
  *   ?               report the current configuration
+ *   I               report firmware version and unique board id
  */
 static void handle_complete_line(const char *line)
 {
@@ -382,7 +394,16 @@ static void handle_complete_line(const char *line)
         return;
     }
 
+    case 'I':
+        telemetry_send_identity();
+        telemetry_note_command(true);
+        return;
+
     default:
+        /* Acknowledge the rejection. A silent drop here is indistinguishable
+         * from a dead link, and it is the one rejection path a stray byte can
+         * push an otherwise valid command into. */
+        telemetry_ack("ERR unknown");
         telemetry_note_command(false);
         return;
     }
@@ -391,18 +412,41 @@ static void handle_complete_line(const char *line)
 /** Line assembly from UART IRQ ring or USB stdio (single consumer in main). */
 static void feed_line_byte(uint8_t ch)
 {
+    uint64_t now = time_us_64();
+
+    /* A byte arriving long after the previous one cannot belong to the same
+     * line. Without this a single stray byte - line noise, or a leftover from
+     * another program that had the port open - sits in the buffer indefinitely
+     * and silently corrupts whatever command is sent next, which then fails
+     * with no clue as to why. */
+    if ((line_len > 0 || line_overflow) && (now - line_last_byte_us) > LINE_IDLE_RESET_US) {
+        line_len = 0;
+        line_overflow = false;
+    }
+    line_last_byte_us = now;
+
     if (ch == '\r') {
         return;
     }
     if (ch == '\n') {
-        line_buf[line_len] = '\0';
-        if (line_len > 0) {
+        if (line_overflow) {
+            telemetry_ack("ERR line too long");
+            telemetry_note_command(false);
+        } else if (line_len > 0) {
+            line_buf[line_len] = '\0';
             handle_complete_line(line_buf);
         }
         line_len = 0;
-    } else if (line_len < LINE_MAX - 1) {
+        line_overflow = false;
+        return;
+    }
+    if (line_overflow) {
+        return;  /* swallow the rest of the line rather than parsing its tail */
+    }
+    if (line_len < LINE_MAX - 1) {
         line_buf[line_len++] = (char)ch;
     } else {
+        line_overflow = true;
         line_len = 0;
     }
 }
@@ -476,6 +520,11 @@ int main(void)
 
     telemetry_init();
     telemetry_log("vmoji telemetry online");
+    telemetry_send_identity();
+
+    /* Pause while a debugger has the core halted, so single-stepping does not
+     * look like a firmware hang and trigger a reset. */
+    watchdog_enable(WATCHDOG_TIMEOUT_MS, true);
 
     while (true) {
         if (!scan_paused) {
@@ -484,7 +533,9 @@ int main(void)
         }
         drain_uart_lines();
         drain_stdio_line_bytes();
+        telemetry_set_flag(VMOJI_FLAG_ACTIVITY, time_us_64() < activity_blink_until_us);
         telemetry_set_framebuffer(&frameBuffer[0][0]);
         telemetry_service();
+        watchdog_update();
     }
 }

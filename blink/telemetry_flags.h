@@ -7,5 +7,6 @@
 #define VMOJI_FLAG_ACTIVITY 0x01u  /* activity pixel currently blinking */
 #define VMOJI_FLAG_OVERRUN  0x02u  /* UART ring buffer dropped a byte */
 #define VMOJI_FLAG_PAUSED   0x04u  /* scanning suspended by host command */
+#define VMOJI_FLAG_TX_DROP  0x08u  /* a telemetry frame was dropped, link too slow */
 
 #endif  /* VMOJI_TELEMETRY_FLAGS_H */

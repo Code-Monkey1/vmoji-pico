@@ -40,9 +40,30 @@ add_executable(blink
     telemetry.cpp
     )
 
+# Build provenance, reported at boot. Regenerated at configure time; a dirty or
+# absent git tree degrades to "unknown" rather than failing the build.
+set(VMOJI_VERSION "1.1.0")
+execute_process(
+    COMMAND git rev-parse --short=8 HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE VMOJI_GIT_SHA
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT VMOJI_GIT_SHA)
+    set(VMOJI_GIT_SHA "unknown")
+endif()
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/vmoji_version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/vmoji_generated/vmoji_version.h
+    @ONLY
+)
+target_include_directories(blink PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/vmoji_generated)
+
 # pull in common dependencies
 # hardware_adc drives the RP2040 on-die temperature sensor used by telemetry.
-target_link_libraries(blink pico_stdlib hardware_adc)
+# pico_unique_id reports the chip serial, which identifies a specific board.
+target_link_libraries(blink pico_stdlib hardware_adc pico_unique_id)
 
 if (PICO_CYW43_SUPPORTED)
     target_link_libraries(blink pico_cyw43_arch_none)
@@ -50,6 +71,12 @@ endif()
 
 pico_enable_stdio_usb(blink 1)
 pico_enable_stdio_uart(blink 0)
+
+# The USB CDC write blocks while the host is not draining the endpoint. The SDK
+# default gives up after half a second, which is an eternity for a scan loop
+# whose row dwell is measured in hundreds of microseconds; 1 ms bounds the worst
+# case that a stalled host can inflict on the display.
+target_compile_definitions(blink PRIVATE PICO_STDIO_USB_STDOUT_TIMEOUT_US=1000)
 
 # create map/bin/hex file etc.
 pico_add_extra_outputs(blink)

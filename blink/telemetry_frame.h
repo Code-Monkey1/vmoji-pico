@@ -148,6 +148,7 @@ enum StatusFlag : std::uint8_t {
     kFlagActivity = VMOJI_FLAG_ACTIVITY,
     kFlagOverrun = VMOJI_FLAG_OVERRUN,
     kFlagPaused = VMOJI_FLAG_PAUSED,
+    kFlagTxDrop = VMOJI_FLAG_TX_DROP,
 };
 
 // ---------------------------------------------------------------------------

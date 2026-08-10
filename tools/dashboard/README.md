@@ -98,9 +98,16 @@ scan period min/mean/max, peak-to-peak jitter, RP2040 die temperature from the
 on-chip sensor, accepted and rejected command counts, received byte count,
 current row dwell, glyph id and status flags.
 
+The flags are `ACTIVITY` (0x01, the activity pixel is lit), `OVERRUN` (0x02, the
+UART receive ring dropped a byte), `PAUSED` (0x04, scanning suspended by
+command) and `TX_DROP` (0x08, a telemetry frame was discarded because a link
+could not keep up). A host that receives a `Status` payload *longer* than the 32
+bytes it knows about decodes the prefix and ignores the rest, so newer firmware
+can add fields without breaking an older dashboard.
+
 ### Why the uplink is ASCII
 
-Commands stay line-oriented text (`S 2 3`, `G 4`, `D 900`, `B`, `P`, `Z`, `?`) so
+Commands stay line-oriented text (`S 2 3`, `G 4`, `D 900`, `B`, `P`, `Z`, `?`, `I`) so
 the board can still be driven from `minicom` with no tooling at all during
 bring-up. Framing and a CRC earn their keep on a 10 Hz downlink carrying packed
 binary; they are pure overhead on six commands a minute typed by a human.
@@ -132,13 +139,43 @@ cd tools/dashboard
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-.venv/bin/python app.py                       # simulator, no hardware needed
-.venv/bin/python app.py --list-ports          # enumerate serial ports
-.venv/bin/python app.py --port /dev/ttyACM0   # live board over USB CDC
+.venv/bin/python app.py                       # find a board; simulator only if none
+.venv/bin/python app.py --sim                 # force the simulator
+.venv/bin/python app.py --list-ports          # enumerate and rank serial ports
+.venv/bin/python app.py --port /dev/ttyACM0   # a specific port, no searching
+.venv/bin/python app.py --no-probe            # skip the confirm-a-frame check
 .venv/bin/python app.py --replay session.vmc  # replay a capture
 .venv/bin/python app.py --record out.vmc      # record from the start, no dialog
 .venv/bin/python app.py --error-rate 0.05     # corrupt 5% of frames on purpose
 ```
+
+### Finding the board
+
+With no arguments the dashboard looks for real hardware and only falls back to
+the simulator if there is none. Ports are ranked by USB id - the Pico's own CDC
+interface (`2e8a:000a`) first, then a Debug Probe's UART bridge (`2e8a:000c`),
+then anything else - and the chosen port must produce one CRC-valid frame before
+the dashboard commits to it. A matching USB id only proves a Pico is plugged in,
+not that it is running this firmware, so the frame is the part that counts.
+
+The simulator is deliberately convincing, which makes it dangerous in front of an
+audience. It is therefore always last in the source list, never auto-selected,
+and while it is running the window wears a **SIMULATION** banner and a title-bar
+marker. When a real board is connected the Link panel shows its unique chip id,
+so "is this actually the hardware?" has a visible answer at all times.
+
+If a live link drops - a bumped USB cable is the usual cause - the dashboard
+reconnects on its own with a bounded backoff rather than ending the session, and
+it re-scans for ports every two seconds so a board plugged in later shows up
+without pressing Rescan.
+
+### Replaying a capture
+
+A recording is the one source you can actually navigate, so it gets a transport
+bar: play/pause, restart, loop, a seek slider with elapsed and total time, and a
+speed control. Seeking cuts the byte stream mid-frame and the parser
+resynchronises at the new position, which is the honest outcome of seeking a
+byte stream and the same recovery path a noisy link exercises.
 
 On Linux, PySide6 6.5+ needs `libxcb-cursor0` for the xcb platform plugin:
 
@@ -150,7 +187,7 @@ sudo apt install libxcb-cursor0
 
 ```bash
 cd blink
-export PICO_SDK_PATH=$HOME/.pico-sdk/sdk/2.2.0
+export PICO_SDK_PATH=$HOME/.pico-sdk/sdk/2.3.0
 export PATH="$HOME/.pico-sdk/toolchain/14_2_Rel1/bin:$PATH"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C build
@@ -158,9 +195,23 @@ ninja -C build
 ```
 
 The firmware sends telemetry on **both** USB CDC (`/dev/ttyACM0`) and UART0
-(GP0 TX / GP1 RX at 115200 8N1), so either transport works. Note that the very
-first bytes on the link are an ASCII banner - which doubles as a permanent test
-that the parser can find its sync word in a stream that starts as unframed text.
+(GP0 TX / GP1 RX at 115200 8N1), so either transport works.
+
+On UART the very first bytes are an unframed ASCII banner, which doubles as a
+permanent test that the parser can find its sync word in a stream that does not
+start with one. USB behaves differently and it is worth knowing why: the CDC
+stack discards everything written before a host opens the port, so a dashboard
+attaching later never sees the banner and starts mid-stream instead. Board
+identity therefore travels as a framed `Log` message rather than as banner text:
+
+```
+ID vmoji 1.1.0 sha=5ab4f62a board=E6614C775B59B537
+```
+
+The firmware repeats it every 10 s and on demand via the `I` command, so it
+reaches a host regardless of when that host arrived. `board=` is the RP2040's
+unique chip id, which is what lets the dashboard name the specific board on
+screen - and what makes a live demo distinguishable from the simulator.
 
 ### Bring-up check
 
@@ -187,12 +238,23 @@ cd tools/dashboard
 .venv/bin/python -m pytest tests -q
 ```
 
-27 tests, no hardware required. They cover the cross-language vectors, frames
-split byte-by-byte across reads, resynchronisation past a boot banner, CRC
-rejection and recovery, oversized length fields, sequence gaps and 8-bit wrap,
-unknown message ids, a sync word embedded in a payload, buffer growth under pure
-noise, capture round-tripping, and `SerialSource` driven over a pty so the real
-pyserial path is exercised in both directions without a board attached.
+52 tests, no hardware required.
+
+The protocol tests cover the cross-language vectors, frames split byte-by-byte
+across reads, resynchronisation past a boot banner, CRC rejection and recovery,
+oversized length fields, sequence gaps and 8-bit wrap, unknown message ids, a
+sync word embedded in a payload, buffer growth under pure noise, capture
+round-tripping, and `SerialSource` driven over a pty so the real pyserial path is
+exercised in both directions without a board attached.
+
+The dashboard tests cover port ranking and the probe - including a pty that
+emits unrelated chatter, which must *not* be mistaken for a board - replay
+seeking, pausing and speed changes, a `Status` payload carrying extra trailing
+fields from hypothetical newer firmware, and the window's minimum size. That last
+one is a regression guard with a specific history: the minimum had reached
+986x1186, which does not fit on a 1080p laptop. A minimum size grows one
+innocuous widget at a time, so the only thing that keeps it down is a test that
+fails when it grows.
 
 ## Repository layout
 
@@ -233,6 +295,23 @@ plain Python and testable with plain pytest, and the Qt layer on top is thin.
 - **`--error-rate` is a feature, not a debug leftover.** Being able to *show* that
   the parser rejects corrupted frames and resynchronises is more convincing than
   asserting it.
+- **Measuring timing with a blocking write changes what you measure.** The
+  emitter originally pushed each frame out with `putchar_raw` per byte plus a
+  blocking `uart_write_blocking`, which stalled the scan loop for longer than a
+  row dwell every reporting interval. The instrument was the largest source of
+  the jitter it was reporting:
+
+  | | peak-to-peak jitter | worst scan period |
+  |---|---|---|
+  | blocking write | 1444 us | 4700 us |
+  | queued, drained by IRQ | 57 us | 3317 us |
+
+  Frames now go into per-link ring buffers. UART0 drains under its transmit
+  interrupt; USB drains in bounded batches from the main loop, as one
+  `stdio_put_string` call for the whole chunk rather than one stdio round trip
+  per byte. A frame that will not fit is dropped whole rather than truncated -
+  half a frame just costs the host a resync - and the drop raises a `TX DROP`
+  status flag, so the gap is visible instead of silent.
 
 ## Possible next steps
 
