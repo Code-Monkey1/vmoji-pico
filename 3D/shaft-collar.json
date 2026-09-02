@@ -22,7 +22,8 @@
             "pcb_mount_screw": "M3",
             "pcb_nut_pocket_d": "0",
             "pcb_nut_pocket_enabled": "true",
-            "pcb_nut_pocket_extra_d": "0.3",
+            "pcb_nut_pocket_extra_d": "0.5",
+            "pcb_omit_pos_x_hole": "true",
             "shaft_d": "1",
             "slit_angle": "10",
             "teardrop_clamp_hole": "true"
