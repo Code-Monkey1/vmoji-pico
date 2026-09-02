@@ -32,14 +32,19 @@ hat_h = 3.5; // [1:0.5:10]
 hat_wall = 2; // [1:0.5:6]
 // Hat outer diameter (mm). 0 = auto from spacing, screw size, and hat_wall.
 hat_od = 0; // [0:0.5:40]
-// Cylindrical pockets under each mount hole for the nuts (opens on the underside).
+// Cylindrical nut clearance under each mount hole.
 pcb_nut_pocket_enabled = true; // [true, false]
-// Pocket depth into the part from the hat underside (mm).
-pcb_nut_pocket_depth = 2.8; // [1:0.1:8]
+// Vertical notches cut into the collar under each hole (full collar height).
+pcb_collar_nut_pocket_enabled = true; // [true, false]
+// Optional extra pockets upward from the hat underside (keeps flange thinner).
+pcb_hat_nut_pocket_enabled = false; // [true, false]
+pcb_hat_nut_pocket_depth = 2.8; // [0:0.1:8]
 // Pocket diameter (mm). 0 = auto from nut size + pcb_nut_pocket_extra_d.
 pcb_nut_pocket_d = 0; // [0:0.5:12]
 // Extra diameter beyond the nut's circumscribed circle (mm).
 pcb_nut_pocket_extra_d = 0.5; // [0:0.1:3]
+// Omit the +X mount hole (conflicts with the clamp screw). Three-screw mount.
+pcb_omit_pos_x_hole = false; // [true, false]
 
 /* [Hidden] */
 // Smooth arcs
@@ -69,6 +74,10 @@ function _nut_pocket_d(screw_spec, override = 0, extra_d = 0) =
         ? override
         : _nut_circum_d(screw_spec) + extra_d + 2 * $slop;
 
+// zrot_copies(n=4) with right(spacing): 0°=+X, 90°=+Y, 180°=-X, 270°=-Y.
+function _pcb_hole_rotations(omit_pos_x) =
+    omit_pos_x ? [90, 180, 270] : [0, 90, 180, 270];
+
 
 module shaft_collar(
     shaft_d = shaft_d,
@@ -87,9 +96,12 @@ module shaft_collar(
     hat_wall = hat_wall,
     hat_od = hat_od,
     pcb_nut_pocket_enabled = pcb_nut_pocket_enabled,
-    pcb_nut_pocket_depth = pcb_nut_pocket_depth,
+    pcb_collar_nut_pocket_enabled = pcb_collar_nut_pocket_enabled,
+    pcb_hat_nut_pocket_enabled = pcb_hat_nut_pocket_enabled,
+    pcb_hat_nut_pocket_depth = pcb_hat_nut_pocket_depth,
     pcb_nut_pocket_d = pcb_nut_pocket_d,
-    pcb_nut_pocket_extra_d = pcb_nut_pocket_extra_d
+    pcb_nut_pocket_extra_d = pcb_nut_pocket_extra_d,
+    pcb_omit_pos_x_hole = pcb_omit_pos_x_hole
 ) {
     eps = cut_overlap;
     r = collar_od / 2;
@@ -105,6 +117,7 @@ module shaft_collar(
     );
     total_h = collar_h + (pcb_mount_enabled ? hat_h : 0);
     slit_d = max(collar_od, pcb_mount_enabled ? hat_outer_d : 0) + 1;
+    pcb_hole_rots = _pcb_hole_rotations(pcb_omit_pos_x_hole);
 
     assert(clamp_offset + screw_d / 2 < r,
         "clamp_offset places the screw outside the collar");
@@ -118,10 +131,24 @@ module shaft_collar(
             "PCB holes are too close to the hat outer edge");
 
         if (pcb_nut_pocket_enabled) {
-            assert(pcb_nut_pocket_depth > 0,
-                "pcb_nut_pocket_depth must be positive");
-            assert(pcb_hole_spacing + nut_pocket_d / 2 < hat_outer_d / 2,
-                "nut pockets are too close to the hat outer edge");
+            if (pcb_collar_nut_pocket_enabled) {
+                assert(
+                    pcb_hole_spacing - nut_pocket_d / 2 < r,
+                    str(
+                        "collar nut pocket (d=", nut_pocket_d,
+                        ") does not reach the collar; increase pcb_nut_pocket_extra_d ",
+                        "or pcb_nut_pocket_d"
+                    )
+                );
+                assert(
+                    pcb_hole_spacing - nut_pocket_d / 2 > shaft_d / 2 + min_bore_to_clamp,
+                    "collar nut pockets cut too close to the shaft bore"
+                );
+            }
+
+            if (pcb_hat_nut_pocket_enabled)
+                assert(pcb_hat_nut_pocket_depth > 0,
+                    "pcb_hat_nut_pocket_depth must be positive");
         }
     }
 
@@ -165,10 +192,10 @@ module shaft_collar(
                                 anchor = BOT
                             );
 
-            // Four PCB mounting holes in a square (axis-aligned, 90° apart).
+            // PCB mounting holes in a square (axis-aligned, 90° apart).
             if (pcb_mount_enabled) {
                 up(collar_h - eps / 2)
-                    zrot_copies(n = 4)
+                    zrot_copies(rots = pcb_hole_rots)
                         right(pcb_hole_spacing)
                             screw_hole(
                                 pcb_mount_screw,
@@ -177,14 +204,25 @@ module shaft_collar(
                                 orient = UP
                             );
 
-                // Cylindrical nut pockets open on the underside of the hat flange.
-                if (pcb_nut_pocket_enabled)
+                // Vertical notches in the collar so nuts under the hat do not hit the collar wall.
+                if (pcb_nut_pocket_enabled && pcb_collar_nut_pocket_enabled)
+                    zrot_copies(rots = pcb_hole_rots)
+                        right(pcb_hole_spacing)
+                            cyl(
+                                d = nut_pocket_d,
+                                h = collar_h + eps,
+                                anchor = BOTTOM,
+                                orient = UP
+                            );
+
+                // Optional extra clearance pockets upward from the hat underside.
+                if (pcb_nut_pocket_enabled && pcb_hat_nut_pocket_enabled)
                     up(collar_h)
-                        zrot_copies(n = 4)
+                        zrot_copies(rots = pcb_hole_rots)
                             right(pcb_hole_spacing)
                                 cyl(
                                     d = nut_pocket_d,
-                                    h = pcb_nut_pocket_depth + eps,
+                                    h = pcb_hat_nut_pocket_depth + eps,
                                     anchor = BOTTOM,
                                     orient = UP
                                 );
