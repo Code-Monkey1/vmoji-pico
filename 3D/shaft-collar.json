@@ -1,0 +1,28 @@
+{
+    "parameterSets": {
+        "my_M3_preset": {
+            "$fa": "2",
+            "$fs": "0.25",
+            "$slop": "0.2",
+            "clamp_offset": "3.1",
+            "clamp_screw": "M3",
+            "collar_h": "10",
+            "collar_od": "11.1",
+            "cut_overlap": "0.2",
+            "hat_h": "3.5",
+            "hat_od": "0",
+            "hat_wall": "2",
+            "min_bore_to_clamp": "0.9",
+            "nut_trap_depth": "2.5",
+            "pcb_hole_spacing": "8",
+            "pcb_mount_enabled": "true",
+            "pcb_mount_screw": "M3",
+            "shaft_d": "1",
+            "slit_angle": "10",
+            "teardrop_clamp_hole": "true"
+        }
+    },
+    "fileFormatVersion": "1",
+    "parameterSets": "",
+    "parameterSets": ""
+}
