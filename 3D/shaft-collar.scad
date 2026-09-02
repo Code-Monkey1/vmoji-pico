@@ -8,9 +8,9 @@ shaft_d = 1.0; // [0.5:0.05:3]
 
 /* [Collar] */
 collar_od = 16; // [10:0.5:30]
-collar_h = 8;   // [4:0.5:20]
+collar_h = 10;   // [4:0.5:20]
 // Missing pizza-slice angle (degrees). Wider = easier to spread, weaker clamp.
-slit_angle = 10; // [2:0.5:40]
+slit_angle = 8; // [2:0.5:40]
 
 /* [Clamp] */
 clamp_screw = "M3";
@@ -26,7 +26,6 @@ $fa = 2;
 $fs = 0.25;
 // Extra clearance BOSL2 adds to the nut pocket for printer over-extrusion
 $slop = 0.2;
-
 
 module shaft_collar(
     shaft_d = shaft_d,
@@ -89,3 +88,29 @@ module shaft_collar(
 
 
 shaft_collar();
+
+// DRAFT: connect to a thin cylinder (hat) with 4 screw mounting holes (so that it can attach to the PCB which has 4 drilled in holes in the middle)
+// TODO: improve this draft code, use BOSL2 library when applicable.
+distance_from_center_to_top_hole=8;
+hat_h = 3.5;
+hole_h = 50;
+hole_r = 3 + $slop; // M3 hole
+hat_r = distance_from_center_to_top_hole + hole_r + 2;
+
+up(collar_h) {
+    difference() {
+        cylinder(hat_h, hat_r, hat_r);
+        left(distance_from_center_to_top_hole) cylinder(hole_h, hole_r, hole_r);
+        right(distance_from_center_to_top_hole) cylinder(hole_h, hole_r, hole_r);
+        fwd(distance_from_center_to_top_hole) cylinder(hole_h, hole_r, hole_r);
+        back(distance_from_center_to_top_hole) cylinder(hole_h, hole_r, hole_r);
+
+        pie_slice(
+                    d = hat_r*2 + 1,
+                    h = collar_h,
+                    ang = slit_angle,
+                    anchor = BOTTOM,
+                    spin = -slit_angle / 2
+                );
+    }
+}
