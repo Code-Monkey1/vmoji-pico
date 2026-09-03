@@ -9,8 +9,8 @@ shaft_d = 1.0; // [0.5:0.05:3]
 /* [Collar] */
 collar_od = 16; // [10:0.5:30]
 collar_h = 10;   // [4:0.5:20]
-// Missing pizza-slice angle (degrees). Wider = easier to spread, weaker clamp.
-slit_angle = 8; // [2:0.5:40]
+// Kerf width of the rectangular slit (mm). Wider = easier to spread, weaker clamp.
+slit_width = 0.5; // [0.2:0.05:2]
 
 /* [Clamp] */
 clamp_screw = "M3";
@@ -83,7 +83,7 @@ module shaft_collar(
     shaft_d = shaft_d,
     collar_od = collar_od,
     collar_h = collar_h,
-    slit_angle = slit_angle,
+    slit_width = slit_width,
     clamp_screw = clamp_screw,
     clamp_offset = clamp_offset,
     nut_trap_depth = nut_trap_depth,
@@ -166,15 +166,13 @@ module shaft_collar(
             down(eps / 2)
                 cyl(d = shaft_d, h = total_h + eps, anchor = BOTTOM);
 
-            // Pizza-slice slit along +X through the full stack.
+            // Thin rectangular slit along +X through the full stack.
             down(eps / 2)
-                pie_slice(
-                    d = slit_d,
-                    h = total_h + eps,
-                    ang = slit_angle,
-                    anchor = BOTTOM,
-                    spin = -slit_angle / 2
-                );
+                left(eps)
+                    cuboid(
+                        [slit_d / 2 + eps, slit_width, total_h + eps],
+                        anchor = LEFT + BOTTOM
+                    );
 
             // M3 clearance hole across the collar jaws, nut pocket on the -Y face.
             up(collar_h / 2)
