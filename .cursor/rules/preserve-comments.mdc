@@ -1,0 +1,27 @@
+---
+description: Never delete comments unless the user explicitly asks
+alwaysApply: true
+---
+
+# Preserve Comments
+
+Comments in this repo are intentional documentation (design intent, timing
+contracts, bring-up notes, historical pitfalls). Treat them as first-class
+source, not noise.
+
+## Do not
+- Delete, strip, or "clean up" existing comments while editing nearby code
+- Rewrite a file in a way that drops comments that were already present
+- Remove comments because they feel redundant, outdated-looking, or verbose
+- Drop inline markers on constants, table rows, or magic values
+
+## Do
+- Keep comments when refactoring, renaming, moving, or reformatting code
+- Update a comment in place when the code it describes changes, so it stays true
+- Add new comments when introducing non-obvious behavior
+- Only remove or rewrite comments when the user **explicitly** asks to
+
+## When moving code
+- Move the associated comments with the code
+- If a comment no longer applies after a real behavior change, revise it — do
+  not delete it silently
