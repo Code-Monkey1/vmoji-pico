@@ -39,8 +39,11 @@ add_executable(vmoji
     volume.c
     volume_codec.c
     volumes_builtin.c
+    rotation_estimator.c
     rotation_sync.c
+    scan_timing.c
     pio_scan.c
+    pov_service.c
     pov_runtime.c
     )
 
@@ -48,7 +51,9 @@ pico_generate_pio_header(vmoji ${CMAKE_CURRENT_LIST_DIR}/pio_scan.pio)
 
 set_source_files_properties(
     main.c matrix.c uart_link.c commands.c telemetry.cpp
-    volume.c volume_codec.c volumes_builtin.c rotation_sync.c pio_scan.c pov_runtime.c
+    volume.c volume_codec.c volumes_builtin.c
+    rotation_estimator.c rotation_sync.c scan_timing.c
+    pio_scan.c pov_service.c pov_runtime.c
     PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra"
 )
 

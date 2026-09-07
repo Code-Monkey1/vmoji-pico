@@ -36,6 +36,12 @@ void rotation_sync_service(void);
  */
 bool rotation_sync_take_rev(RotationSnapshot *out);
 
+/**
+ * True once when IR lock is lost (no edge for ROT_EST_SYNC_LOSS_US).
+ * Cleared when read. Never fires in sim mode.
+ */
+bool rotation_sync_take_sync_lost(void);
+
 RotationSnapshot rotation_sync_snapshot(void);
 
 /** Force period estimate (e.g. after mode change). */

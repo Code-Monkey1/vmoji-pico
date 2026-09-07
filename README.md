@@ -1,6 +1,18 @@
 # vmoji-pico
 Volumetric Display for the Raspberry Pi Pico (RP2040).
 
+## Firmware host tests
+
+Logic tests run on the PC (no Pico SDK / board required):
+
+```bash
+cmake -S tests/firmware -B build-host-tests
+cmake --build build-host-tests
+ctest --test-dir build-host-tests --output-on-failure
+```
+
+Manual sim/POV bring-up steps: [tests/firmware/acceptance/BRINGUP.md](tests/firmware/acceptance/BRINGUP.md).
+
 ## Telemetry dashboard
 
 The firmware streams binary telemetry at 10 Hz - measured scan rate, per-scan

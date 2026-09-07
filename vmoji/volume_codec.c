@@ -14,10 +14,16 @@ static uint32_t pin_mask;
 static uint32_t blank_word;
 static bool ready;
 
-void volume_codec_init(void)
+uint8_t volume_codec_col_weight(int col)
 {
-    const uint8_t *cols = board_col_pins();
-    const uint8_t *rows = board_row_pins();
+    if (col < 0 || col >= NB_COL) {
+        return 0;
+    }
+    return kColWeight[col];
+}
+
+void volume_codec_init_pins(const uint8_t cols[NB_COL], const uint8_t rows[NB_ROW])
+{
     pin_mask = 0;
     all_row_bits = 0;
     for (int c = 0; c < NB_COL; c++) {
@@ -29,22 +35,22 @@ void volume_codec_init(void)
         pin_mask |= row_bit[r];
         all_row_bits |= row_bit[r];
     }
-    /* Columns off (0), cathodes inactive high — no LED path. */
     blank_word = all_row_bits;
     ready = true;
 }
 
-/**
- * One column dwell: that anode high, lit cathodes low, other cathodes high,
- * other anodes low.
- */
+void volume_codec_init(void)
+{
+    volume_codec_init_pins(board_col_pins(), board_row_pins());
+}
+
 static uint32_t encode_column(const bool row_on[NB_ROW], int col)
 {
-    uint32_t word = all_row_bits;  /* start with all cathodes high (off) */
-    word |= col_bit[col];          /* this anode on */
+    uint32_t word = all_row_bits;
+    word |= col_bit[col];
     for (int r = 0; r < NB_ROW; r++) {
         if (row_on[r]) {
-            word &= ~row_bit[r];   /* sink lit rows */
+            word &= ~row_bit[r];
         }
     }
     return word;
@@ -85,7 +91,6 @@ void volume_codec_bake_static_rows(const bool pixels[NB_ROW][NB_COL],
     *out_mask = pin_mask;
 
     for (int r = 0; r < NB_ROW; r++) {
-        /* Row-mux static path: one cathode low, anodes from the row bits. */
         uint32_t word = all_row_bits;
         word &= ~row_bit[r];
         for (int c = 0; c < NB_COL; c++) {

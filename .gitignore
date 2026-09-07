@@ -33,6 +33,7 @@
 
 # Build
 build/
+build-host-tests/
 CMakeFiles/
 
 # Pico SDK

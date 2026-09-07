@@ -33,6 +33,15 @@ typedef struct {
 
 void volume_codec_init(void);
 
+/**
+ * Initialise from an explicit pin map (host tests use a canonical layout).
+ * cols/rows are GPIO numbers for the eight columns and eight rows.
+ */
+void volume_codec_init_pins(const uint8_t cols[NB_COL], const uint8_t rows[NB_ROW]);
+
+/** Column weight used by the bake expansion (0 if col out of range). */
+uint8_t volume_codec_col_weight(int col);
+
 /** Bake one volume frame into a fixed-rate step list. */
 void volume_codec_bake(const VolumeFrame *frame, VolumeScanlist *out);
 

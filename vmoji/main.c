@@ -76,6 +76,7 @@ int main(void)
     pov_runtime_start_core1();
 
     telemetry_init();
+    commands_init_default();
     telemetry_log("vmoji POV telemetry online");
     telemetry_send_identity();
 

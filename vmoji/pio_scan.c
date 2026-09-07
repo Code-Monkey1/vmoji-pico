@@ -3,6 +3,7 @@
 #include "board_pins.h"
 #include "led-matrix.h"
 #include "pio_scan.pio.h"
+#include "scan_timing.h"
 
 #include <string.h>
 
@@ -106,18 +107,9 @@ bool pio_scan_run_rev(const VolumeScanlist *list, uint32_t period_us,
     }
 
     const uint32_t count = CODEC_STEPS_PER_REV;
-    uint32_t step_us = period_us / count;
-    if (step_us == 0) {
-        step_us = 1;
-    }
-
-    const uint32_t sys_hz = clock_get_hz(clk_sys);
-    uint32_t delay_cycles = (uint32_t)((uint64_t)step_us * sys_hz / 1000000ull);
-    if (delay_cycles > 32u) {
-        delay_cycles -= 32u;  /* approximate call/mask overhead */
-    } else {
-        delay_cycles = 1u;
-    }
+    uint32_t step_us = scan_timing_step_us(period_us, count);
+    uint32_t delay_cycles =
+        scan_timing_delay_cycles(step_us, clock_get_hz(clk_sys));
 
     g_pin_mask = list->pin_mask;
     g_blank = list->blank;
