@@ -3,33 +3,35 @@ include <BOSL2/screws.scad>
 
 
 /* [Shaft] */
-// Motor shaft bore (mm). Press-fit: squeeze the slightly oversized shaft in.
-shaft_d = 1.0; // [0.5:0.05:3]
+// Driven shaft bore (mm). Matches 608ZZ ID / 8 mm rod.
+shaft_d = 8; // [4:0.1:12]
+// Extra diametral clearance beyond shaft_d before the clamp closes.
+bore_extra = 0.15; // [0:0.05:0.6]
 
 /* [Collar] */
-collar_od = 16; // [10:0.5:30]
-collar_h = 10;   // [4:0.5:20]
+collar_od = 26; // [14:0.5:40]
+collar_h = 12;   // [6:0.5:24]
 // Kerf width of the rectangular slit (mm). Wider = easier to spread, weaker clamp.
-slit_width = 0.5; // [0.2:0.05:2]
+slit_width = 0.6; // [0.2:0.05:2]
 
 /* [Clamp] */
 clamp_screw = "M3";
 // Distance from shaft axis to clamp-screw axis (mm). Must clear the bore.
-clamp_offset = 4.5; // [2:0.1:12]
+clamp_offset = 8; // [4:0.1:16]
 // How far the hex nut pocket goes into the jaw (mm).
 nut_trap_depth = 3.2; // [2:0.1:8]
 teardrop_clamp_hole = true;
 // Minimum solid wall between bore and clamp screw (mm).
-min_bore_to_clamp = 0.8; // [0.3:0.1:2]
+min_bore_to_clamp = 1.0; // [0.3:0.1:3]
 
 /* [PCB mount] */
 pcb_mount_enabled = true; // [true, false]
 pcb_mount_screw = "M3";
 // Center-to-center spacing of the square hole pattern (mm).
-pcb_hole_spacing = 8; // [4:0.5:20]
+pcb_hole_spacing = 11; // [4:0.5:20]
 hat_h = 3.5; // [1:0.5:10]
 // Minimum wall from hole edge to hat outer edge (mm).
-hat_wall = 2; // [1:0.5:6]
+hat_wall = 2.5; // [1:0.5:6]
 // Hat outer diameter (mm). 0 = auto from spacing, screw size, and hat_wall.
 hat_od = 0; // [0:0.5:40]
 // Cylindrical nut clearance under each mount hole.
@@ -44,19 +46,15 @@ pcb_nut_pocket_d = 0; // [0:0.5:12]
 // Extra diameter beyond the nut's circumscribed circle (mm).
 pcb_nut_pocket_extra_d = 0.5; // [0:0.1:3]
 // Omit the +X mount hole (conflicts with the clamp screw). Three-screw mount.
-pcb_omit_pos_x_hole = false; // [true, false]
+pcb_omit_pos_x_hole = true; // [true, false]
 
 /* [Hidden] */
-// Smooth arcs
 $fa = 2;
 $fs = 0.25;
-// Extra clearance BOSL2 adds to nut pockets for printer over-extrusion
 $slop = 0.2;
-// Tiny overlap so boolean cuts are watertight
 cut_overlap = 0.2;
 
 
-// ISO close-fit clearance is roughly nominal diameter + 0.4 mm.
 function _clearance_hole_d(screw_spec) =
     struct_val(screw_info(screw_spec), "diameter") + 0.4 + 2 * $slop;
 
@@ -65,7 +63,6 @@ function _hat_od(spacing, screw_spec, wall, override = 0) =
         ? override
         : 2 * (spacing + _clearance_hole_d(screw_spec) / 2 + wall);
 
-// Hex nut flat-to-flat -> circumscribed circle diameter.
 function _nut_circum_d(screw_spec) =
     struct_val(nut_info(screw_spec), "width") / cos(30);
 
@@ -74,13 +71,13 @@ function _nut_pocket_d(screw_spec, override = 0, extra_d = 0) =
         ? override
         : _nut_circum_d(screw_spec) + extra_d + 2 * $slop;
 
-// zrot_copies(n=4) with right(spacing): 0°=+X, 90°=+Y, 180°=-X, 270°=-Y.
 function _pcb_hole_rotations(omit_pos_x) =
     omit_pos_x ? [90, 180, 270] : [0, 90, 180, 270];
 
 
 module shaft_collar(
     shaft_d = shaft_d,
+    bore_extra = bore_extra,
     collar_od = collar_od,
     collar_h = collar_h,
     slit_width = slit_width,
@@ -104,6 +101,7 @@ module shaft_collar(
     pcb_omit_pos_x_hole = pcb_omit_pos_x_hole
 ) {
     eps = cut_overlap;
+    bore_d = shaft_d + bore_extra + 2 * $slop;
     r = collar_od / 2;
     screw_d = struct_val(screw_info(clamp_screw), "diameter");
     jaw_half = sqrt(r * r - clamp_offset * clamp_offset);
@@ -121,7 +119,7 @@ module shaft_collar(
 
     assert(clamp_offset + screw_d / 2 < r,
         "clamp_offset places the screw outside the collar");
-    assert(clamp_offset - screw_d / 2 > shaft_d / 2 + min_bore_to_clamp,
+    assert(clamp_offset - screw_d / 2 > bore_d / 2 + min_bore_to_clamp,
         "clamp_offset is too close to the shaft bore");
 
     if (pcb_mount_enabled) {
@@ -141,7 +139,7 @@ module shaft_collar(
                     )
                 );
                 assert(
-                    pcb_hole_spacing - nut_pocket_d / 2 > shaft_d / 2 + min_bore_to_clamp,
+                    pcb_hole_spacing - nut_pocket_d / 2 > bore_d / 2 + min_bore_to_clamp,
                     "collar nut pockets cut too close to the shaft bore"
                 );
             }
@@ -162,11 +160,9 @@ module shaft_collar(
         }
 
         tag("remove") {
-            // Press-fit bore through the full stack.
             down(eps / 2)
-                cyl(d = shaft_d, h = total_h + eps, anchor = BOTTOM);
+                cyl(d = bore_d, h = total_h + eps, anchor = BOTTOM);
 
-            // Thin rectangular slit along +X through the full stack.
             down(eps / 2)
                 left(eps)
                     cuboid(
@@ -174,7 +170,6 @@ module shaft_collar(
                         anchor = LEFT + BOTTOM
                     );
 
-            // M3 clearance hole across the collar jaws, nut pocket on the -Y face.
             up(collar_h / 2)
                 right(clamp_offset)
                     screw_hole(
@@ -190,7 +185,6 @@ module shaft_collar(
                                 anchor = BOT
                             );
 
-            // PCB mounting holes in a square (axis-aligned, 90° apart).
             if (pcb_mount_enabled) {
                 up(collar_h - eps / 2)
                     zrot_copies(rots = pcb_hole_rots)
@@ -202,7 +196,6 @@ module shaft_collar(
                                 orient = UP
                             );
 
-                // Vertical notches in the collar so nuts under the hat do not hit the collar wall.
                 if (pcb_nut_pocket_enabled && pcb_collar_nut_pocket_enabled)
                     zrot_copies(rots = pcb_hole_rots)
                         right(pcb_hole_spacing)
@@ -213,7 +206,6 @@ module shaft_collar(
                                 orient = UP
                             );
 
-                // Optional extra clearance pockets upward from the hat underside.
                 if (pcb_nut_pocket_enabled && pcb_hat_nut_pocket_enabled)
                     up(collar_h)
                         zrot_copies(rots = pcb_hole_rots)

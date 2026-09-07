@@ -12,10 +12,10 @@ motor_h = 12; // [8:0.5:40]
 
 /* [Collet] */
 collet_wall = 4.5; // [2:0.5:6]
-// Must match motor-base pocket. Keep bolts outside ring_od/2 (20.5).
-collet_flange_od = 54; // [36:0.5:70]
+// Must match motor-base pocket.
+collet_flange_od = 48; // [30:0.5:60]
 collet_flange_h = 3; // [2:0.5:6]
-flange_bolt_r = 23.5; // [14:0.5:35]
+flange_bolt_r = 20; // [10:0.5:28]
 flange_bolt_count = 3; // [3:1:6]
 key_w = 8; // [4:0.5:16]
 key_d = 2.5; // [1:0.5:6]
@@ -64,7 +64,6 @@ module motor_collet(
     mount_screw = mount_screw
 ) {
     eps = cut_overlap;
-    // Slight clearance; the slit clamp closes the rest of the gap.
     bore_d = motor_d + $slop;
     od = mb_collet_od(motor_d, collet_wall);
     r = od / 2;
@@ -89,36 +88,23 @@ module motor_collet(
     assert(wire_slot_h <= motor_h,
         "wire_slot_h exceeds motor height");
 
-    // Three plastic bumps on the collet top so the ring sits on plastic, not the can.
-    standoff_d = 4.5;
-    standoff_r = (bore_d + od) / 4;
-
     diff() {
         union() {
-            // Barrel around the can (full motor height).
             cyl(d = od, h = motor_h, anchor = BOTTOM);
 
-            // Bottom keyed flange (radial; does not add height).
             mb_flange_solid(
                 collet_flange_od,
                 collet_flange_h,
                 key_w,
                 key_d
             );
-
-            // Ring standoffs on top face (above the can).
-            up(motor_h)
-                zrot_copies(n = 3, sa = 90)
-                    right(standoff_r)
-                        cyl(d = standoff_d, h = 1.5, anchor = BOTTOM);
         }
 
         tag("remove") {
-            // Motor bore.
             down(eps / 2)
                 cyl(d = bore_d, h = motor_h + eps, anchor = BOTTOM);
 
-            // Clamp slit along +X (wire/porch side).
+            // Clamp slit along +X (toward porch / wire exit).
             down(eps / 2)
                 left(eps)
                     cuboid(
@@ -126,7 +112,6 @@ module motor_collet(
                         anchor = LEFT + BOTTOM
                     );
 
-            // M3 clamp across the jaws; nut trap on -Y.
             up(motor_h / 2)
                 right(clamp_offset)
                     screw_hole(
@@ -142,7 +127,6 @@ module motor_collet(
                                 anchor = BOT
                             );
 
-            // Side wire exit at the bottom toward +X.
             up(wire_slot_h / 2 - eps / 2)
                 right(bore_d / 4)
                     cuboid(
@@ -154,7 +138,6 @@ module motor_collet(
                         anchor = LEFT + CENTER
                     );
 
-            // Flange mounting holes (clearance).
             for (a = bolt_angles)
                 zrot(a)
                     right(flange_bolt_r)
