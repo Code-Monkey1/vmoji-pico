@@ -71,3 +71,4 @@ __pycache__/
 /tools/venv
 /vmoji/.cache
 *.stl
+*.3mf
