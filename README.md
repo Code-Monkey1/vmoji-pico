@@ -1,6 +1,8 @@
 # vmoji-pico
 Volumetric Display for the Raspberry Pi Pico (RP2040).
 
+Mechanical CAD (OpenSCAD dual-motor drive): [3D/README.md](3D/README.md).
+
 ## Firmware host tests
 
 Logic tests run on the PC (no Pico SDK / board required):

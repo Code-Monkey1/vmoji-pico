@@ -18,7 +18,7 @@ min_bore_to_clamp = 1.0; // [0.3:0.1:3]
 /* [PCB mount] */
 pcb_mount_enabled = true; // [true, false]
 pcb_mount_screw = "M3";
-pcb_hole_spacing = 11; // [4:0.5:20]
+pcb_hole_spacing = vm_pcb_hole_spacing; // [4:0.5:20] — default from vmoji-mech-params.scad
 hat_wall = 2.5; // [1:0.5:6]
 hat_od = 0; // [0:0.5:40]
 pcb_nut_pocket_enabled = true; // [true, false]

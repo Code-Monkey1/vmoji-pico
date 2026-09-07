@@ -1,5 +1,6 @@
 // Dual-motor base: bottom 608 only, plastic shaft through coils (see driven-shaft.scad).
 // Column tops take M3 heat-set inserts for the TX deck bolts.
+// Printed skirt under the floor clears the M8 SHCS head so the base sits flush/stable.
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
 include <BOSL2/gears.scad>
@@ -11,8 +12,6 @@ include <motor-base-common.scad>
 wire_slot_w = 4; // [2:0.5:10]
 ear_w = 12; // [8:0.5:20]
 ear_stick = 8; // [4:0.5:16]
-glue_foot_d = 12; // [8:0.5:20]
-glue_foot_h = 0.8; // [0.4:0.1:2]
 switch_cutout_w = 16.4; // [8:0.1:40]
 switch_cutout_h = 27.4; // [10:0.1:50]
 switch_body_depth = 25; // [10:0.5:40]
@@ -51,8 +50,6 @@ module motor_base(
     porch_inner_z = vm_porch_inner_z,
     ear_w = ear_w,
     ear_stick = ear_stick,
-    glue_foot_d = glue_foot_d,
-    glue_foot_h = glue_foot_h,
     switch_cutout_w = switch_cutout_w,
     switch_cutout_h = switch_cutout_h,
     switch_body_depth = switch_body_depth,
@@ -61,7 +58,9 @@ module motor_base(
     lid_screw = lid_screw,
     post_d = post_d,
     nut_trap_depth = nut_trap_depth,
-    teardrop_holes = teardrop_holes
+    teardrop_holes = teardrop_holes,
+    skirt_h = vm_skirt_h,
+    skirt_wall = vm_skirt_wall
 ) {
     eps = cut_overlap;
     collet_od = mb_collet_od(motor_d, collet_wall);
@@ -122,6 +121,7 @@ module motor_base(
         motor_y - motor_d / 2 > (bearing_pocket_d + 2 * wall_t) / 2 + 0.5,
         "motor can intersects bottom bearing boss"
     );
+    assert(skirt_h > 0, "skirt_h must be positive for flush underside");
 
     diff() {
         union() {
@@ -167,6 +167,31 @@ module motor_base(
                         rounding = 2,
                         edges = "Z"
                     );
+
+            // Continuous skirt: table contact at z=-skirt_h; SHCS head stays above it.
+            down(skirt_h) {
+                cuboid(
+                    [deck_x, deck_y, skirt_h],
+                    anchor = BOTTOM,
+                    rounding = 6,
+                    edges = "Z"
+                );
+                right(porch_x0)
+                    cuboid(
+                        [porch_outer_x, porch_outer_y, skirt_h],
+                        anchor = LEFT + BOTTOM,
+                        chamfer = 1,
+                        edges = [FRONT + RIGHT, BACK + RIGHT]
+                    );
+                for (p = ear_pts)
+                    translate([p.x, p.y, 0])
+                        cuboid(
+                            [ear_stick + 1, ear_w, skirt_h],
+                            anchor = (p.x > 0 ? LEFT : RIGHT) + BOTTOM,
+                            rounding = 2,
+                            edges = "Z"
+                        );
+            }
         }
 
         tag("remove") {
@@ -227,17 +252,60 @@ module motor_base(
                     edges = "Z"
                 );
 
-            // Single bottom 608 + M8 bolt journal clearance + hex-head / washer pocket.
+            // 608 OD pocket. Outer race sits on the z=0 annulus outside bearing_lip_id.
             up(bot_bearing_z0)
                 cyl(d = bearing_pocket_d, h = bearing_h + eps, anchor = BOTTOM);
+
+            // Journal clearance through the bearing ID.
             down(eps / 2)
                 cyl(d = shaft_clear, h = bot_bearing_z1 + eps, anchor = BOTTOM);
-            down(eps / 2)
+
+            // Skirt hollow (leave a solid core under the 608 boss for the OD lip).
+            down(skirt_h + eps / 2) {
+                difference() {
+                    union() {
+                        cuboid(
+                            [
+                                max(eps, deck_x - 2 * skirt_wall),
+                                max(eps, deck_y - 2 * skirt_wall),
+                                skirt_h + eps
+                            ],
+                            anchor = BOTTOM,
+                            rounding = 4,
+                            edges = "Z"
+                        );
+                        right(porch_x0 + skirt_wall)
+                            cuboid(
+                                [
+                                    max(eps, porch_outer_x - 2 * skirt_wall),
+                                    max(eps, porch_outer_y - 2 * skirt_wall),
+                                    skirt_h + eps
+                                ],
+                                anchor = LEFT + BOTTOM
+                            );
+                    }
+                    // Protected core = boss footprint; lip annulus survives around lip_id.
+                    cyl(
+                        d = bearing_pocket_d + 2 * wall_t,
+                        h = skirt_h + 2 * eps,
+                        anchor = BOTTOM
+                    );
+                }
+
+                // Through the lip: washer seats up against the 608 inner race.
                 cyl(
-                    d = vm_bolt_head_countersink_d,
-                    h = vm_bolt_head_countersink_h + eps,
+                    d = vm_bearing_lip_id,
+                    h = skirt_h + eps,
                     anchor = BOTTOM
                 );
+
+                // Head well (narrower than lip; keeps the screw centered).
+                cyl(
+                    d = vm_bolt_head_pocket_d,
+                    h = skirt_h + eps,
+                    anchor = BOTTOM
+                );
+            }
 
             // M3 heat-set insert pilots in column tops (not threads in plastic).
             for (c = col_coords)
@@ -303,20 +371,18 @@ module motor_base(
                             );
             }
 
+            // Optional bench-mount holes through floor + skirt.
             for (p = ear_pts) {
                 ear_dir = p.x > 0 ? 1 : -1;
-                translate([p.x + ear_dir * (ear_stick + 1) / 2, p.y, 0]) {
-                    down(eps / 2)
+                translate([p.x + ear_dir * (ear_stick + 1) / 2, p.y, 0])
+                    down(skirt_h + eps / 2)
                         screw_hole(
                             mount_screw,
-                            l = floor_h + eps,
+                            l = floor_h + skirt_h + eps,
                             teardrop = teardrop_holes,
                             anchor = BOTTOM,
                             orient = UP
                         );
-                    down(eps / 2)
-                        cyl(d = glue_foot_d, h = glue_foot_h + eps, anchor = BOTTOM);
-                }
             }
         }
     }

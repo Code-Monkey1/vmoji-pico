@@ -1,6 +1,7 @@
 // Printed plastic driven shaft — dielectric through the TX–RX coil gap.
-// An M8x20 hex bolt is the journal: shank press-fits into the bottom boss, rides in
-// the 608, and the bolt head + washer retain the stack from below. Print axis-vertical.
+// An M8x16 DIN 912 SHCS is the journal: shank press-fits into the bottom boss, rides in
+// the 608, and the head + washer retain the stack from below (inside the base skirt).
+// A short clearance bore above the press accepts the remaining tip. Print axis-vertical.
 include <BOSL2/std.scad>
 include <vmoji-mech-params.scad>
 include <motor-base-common.scad>
@@ -22,12 +23,16 @@ module driven_shaft(
     journal_boss_h = vm_shaft_journal_boss_h,
     journal_d = vm_journal_d,
     journal_press_depth = vm_journal_press_depth,
-    journal_fit_extra = vm_journal_fit_extra
+    journal_fit_extra = vm_journal_fit_extra,
+    journal_clear_extra = vm_journal_clear_extra
 ) {
     eps = cut_overlap;
     h = is_undef(body_h) ? vm_shaft_body_h() : body_h;
     journal_bore_d = journal_d + journal_fit_extra + 2 * $slop;
+    clear_bore_d = journal_d + journal_clear_extra + 2 * $slop;
+    clear_depth = vm_journal_clear_depth();
     seat_z = journal_boss_h + flange_h;
+    metal_into = vm_journal_into_plastic();
 
     vm_assert_coil_gap_metal_free();
     assert(flange_d > journal_boss_d, "flange must exceed journal boss OD");
@@ -35,6 +40,14 @@ module driven_shaft(
     assert(
         journal_press_depth <= journal_boss_h + flange_h - 0.5,
         "journal press must stay in boss/flange — keep Ø8 coil span solid plastic"
+    );
+    assert(
+        metal_into <= h - 5,
+        "journal tip would exit the top of the shaft — shorten screw"
+    );
+    assert(
+        clear_depth < 0.01 || clear_bore_d >= journal_bore_d,
+        "clearance bore must be at least as loose as the press bore"
     );
     assert(h > seat_z + 20, "shaft body too short for coil / collar stack");
 
@@ -52,12 +65,22 @@ module driven_shaft(
         }
 
         tag("remove") {
+            // Press fit in boss/flange.
             down(eps / 2)
                 cyl(
                     d = journal_bore_d,
                     h = journal_press_depth + eps,
                     anchor = BOTTOM
                 );
+
+            // Loose tip clearance above the press (M8x16 leftover past bearing+press).
+            if (clear_depth > 0.05)
+                up(journal_press_depth - eps)
+                    cyl(
+                        d = clear_bore_d,
+                        h = clear_depth + 2 * eps,
+                        anchor = BOTTOM
+                    );
         }
     }
 }

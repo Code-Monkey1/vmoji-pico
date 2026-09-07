@@ -1,5 +1,6 @@
 // Coil-safe dual-motor assembly preview (F5).
-// Metal only below gears (608 + M8 bolt journal). Plastic shaft through TX–RX gap.
+// Metal only below gears (608 + M8x16 SHCS journal). Plastic shaft through TX–RX gap.
+// Base skirt contact is at -vm_skirt_h; SHCS head stays above the table.
 //
 // Animate: View → Animate. Start with FPS=30, Steps=180.
 // $t runs 0→1; the rotor turns once per cycle, pinions twice (2:1) the other way.
@@ -57,14 +58,14 @@ module _preview_bearing() {
 
 
 module _preview_journal() {
-    // M8 bolt: head under the base, shank through 608 into the plastic shaft.
-    head_h = 5.3;
-    wash_h = 1.6;
+    // M8x16 SHCS: head + washer inside the skirt, shank through 608 into the shaft.
+    head_h = vm_shcs_head_h;
+    wash_h = vm_washer_h;
     color("lightsteelblue") {
         up(vm_bot_bearing_z0() - head_h - wash_h)
-            cyl(d = 13, h = head_h, anchor = BOTTOM, $fn = 6);
+            cyl(d = vm_shcs_head_d, h = head_h, anchor = BOTTOM, $fn = 48);
         up(vm_bot_bearing_z0() - wash_h)
-            cyl(d = 16, h = wash_h, anchor = BOTTOM);
+            cyl(d = vm_washer_od, h = wash_h, anchor = BOTTOM);
         up(vm_bot_bearing_z0())
             cyl(d = vm_journal_d - 0.05, h = vm_journal_len, anchor = BOTTOM);
     }
