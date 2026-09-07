@@ -1,6 +1,5 @@
 // Shared helpers for dual-motor offset gear drive parts.
-// Include BOSL2/std.scad, BOSL2/screws.scad, and BOSL2/gears.scad before this file.
-// Mating defaults live in each print file's Customizer and must stay in sync.
+// Include BOSL2 (std, screws, gears as needed) and vmoji-mech-params.scad before this file.
 
 /* ---- Fasteners / clearance ---- */
 
@@ -16,35 +15,37 @@ function mb_nut_pocket_d(screw_spec, extra_d = 0) =
 function mb_collet_od(motor_d, wall) =
     motor_d + 2 * wall;
 
-// Flange bolt angles: first at +Y so the +X slit/key sector stays clear.
 function mb_flange_bolt_angles(n) =
     [for (i = [0:n - 1]) 90 + i * 360 / n];
 
-/* ---- 608ZZ bearing (8 x 22 x 7) ---- */
+/* ---- Bearing / shaft (defaults from params) ---- */
 
-function mb_bearing_id() = 8;
-function mb_bearing_od() = 22;
-function mb_bearing_h() = 7;
+function mb_bearing_id() = vm_bearing_id;
+function mb_bearing_od() = vm_bearing_od;
+function mb_bearing_h() = vm_bearing_h;
 
-// Printed pocket OD: bearing OD + fit clearance.
-function mb_bearing_pocket_d(fit = 0.15) =
-    mb_bearing_od() + fit + 2 * $slop;
+function mb_bearing_pocket_d(fit = undef) =
+    let (f = is_undef(fit) ? vm_bearing_fit : fit)
+        mb_bearing_od() + f + 2 * $slop;
 
-// Shaft clearance through plastic (not the bearing bore).
-function mb_shaft_clear_d(shaft_d = 8, extra = 0.6) =
-    shaft_d + extra + 2 * $slop;
+function mb_shaft_clear_d(shaft_d = undef, extra = 0.6) =
+    let (d = is_undef(shaft_d) ? vm_shaft_d : shaft_d)
+        d + extra + 2 * $slop;
 
-/* ---- Gear train defaults (override in Customizer per file) ---- */
+function mb_bushing_id(fit_extra = undef) =
+    let (e = is_undef(fit_extra) ? vm_bushing_fit_extra : fit_extra)
+        vm_shaft_d + e + 2 * $slop;
 
-function mb_gear_mod() = 1.25;
-function mb_pinion_teeth() = 14;
-function mb_driven_teeth() = 28;
-function mb_gear_helical() = 25;
-function mb_gear_backlash() = 0.3;
-function mb_gear_thickness() = 10;
-function mb_gear_pressure_angle() = 20;
+/* ---- Gear train (defaults from params) ---- */
 
-// Center distance including FDM backlash slack (added outside gear_dist).
+function mb_gear_mod() = vm_gear_mod;
+function mb_pinion_teeth() = vm_pinion_teeth;
+function mb_driven_teeth() = vm_driven_teeth;
+function mb_gear_helical() = vm_gear_helical;
+function mb_gear_backlash() = vm_gear_backlash;
+function mb_gear_thickness() = vm_gear_thickness;
+function mb_gear_pressure_angle() = vm_gear_pressure_angle;
+
 function mb_gear_center_dist(
     mod = mb_gear_mod(),
     pinion_teeth = mb_pinion_teeth(),

@@ -1,36 +1,19 @@
+// Motor pinion — herringbone + proven 1.0 mm slit-clamp. Short hub for less shaft load.
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
 include <BOSL2/gears.scad>
+include <vmoji-mech-params.scad>
 include <motor-base-common.scad>
 
 
-/* [Shaft] */
-// Proven RF-300 press-fit bore (mm). Do not change without re-calibrating.
-shaft_d = 1.0; // [0.5:0.05:3]
-
-
-/* [Gear] */
-gear_mod = 1.25; // [0.5:0.05:2]
-pinion_teeth = 14; // [10:1:30]
-gear_helical = 25; // [0:1:40]
-gear_backlash = 0.3; // [0:0.05:1]
-gear_thickness = 10; // [6:0.5:20]
-gear_pressure_angle = 20; // [14.5:0.5:25]
-gear_slices = 6; // [3:1:12]
-
-
-/* [Hub / clamp] */
-// Axial hub below the teeth so the pinion clears the motor face (mm).
-hub_h = 3; // [1:0.5:8]
-// Hub OD (mm). 0 = auto just under root diameter.
-hub_od = 0; // [0:0.5:30]
+/* [Clamp] */
 slit_width = 0.5; // [0.2:0.05:2]
 clamp_screw = "M3";
-// Distance from shaft axis to clamp-screw axis (mm).
 clamp_offset = 3.8; // [2:0.1:12]
 nut_trap_depth = 3.2; // [2:0.1:8]
 teardrop_clamp_hole = true; // [true, false]
 min_bore_to_clamp = 0.8; // [0.3:0.1:2]
+hub_od = 0; // [0:0.5:30]
 
 
 /* [Hidden] */
@@ -41,15 +24,15 @@ cut_overlap = 0.2;
 
 
 module motor_pinion(
-    shaft_d = shaft_d,
-    gear_mod = gear_mod,
-    pinion_teeth = pinion_teeth,
-    gear_helical = gear_helical,
-    gear_backlash = gear_backlash,
-    gear_thickness = gear_thickness,
-    gear_pressure_angle = gear_pressure_angle,
-    gear_slices = gear_slices,
-    hub_h = hub_h,
+    shaft_d = vm_motor_shaft_d,
+    gear_mod = vm_gear_mod,
+    pinion_teeth = vm_pinion_teeth,
+    gear_helical = vm_gear_helical,
+    gear_backlash = vm_gear_backlash,
+    gear_thickness = vm_gear_thickness,
+    gear_pressure_angle = vm_gear_pressure_angle,
+    gear_slices = vm_gear_slices,
+    hub_h = vm_pinion_hub_h,
     hub_od = hub_od,
     slit_width = slit_width,
     clamp_screw = clamp_screw,
@@ -66,7 +49,6 @@ module motor_pinion(
         pressure_angle = gear_pressure_angle,
         backlash = gear_backlash
     );
-    // Prefer a clampable hub; allow it to sit just inside the root circle.
     hub_d = hub_od > 0 ? hub_od : max(shaft_d + 8, min(root_d - 0.4, 14));
     r = hub_d / 2;
     screw_d = struct_val(screw_info(clamp_screw), "diameter");
@@ -79,15 +61,11 @@ module motor_pinion(
         "clamp_offset places the screw outside the hub");
     assert(clamp_offset - screw_d / 2 > shaft_d / 2 + min_bore_to_clamp,
         "clamp_offset is too close to the shaft bore");
-    assert(hub_d > shaft_d + 2 * min_bore_to_clamp + screw_d,
-        "hub_od too small for clamp");
 
     diff() {
         union() {
-            // Hub under the gear (sits toward the motor face).
             cyl(d = hub_d, h = hub_h, anchor = BOTTOM);
 
-            // Herringbone teeth centered above the hub.
             up(hub_h + gear_thickness / 2)
                 mb_herringbone_gear(
                     teeth = pinion_teeth,
@@ -105,7 +83,6 @@ module motor_pinion(
             down(eps / 2)
                 cyl(d = shaft_d, h = total_h + eps, anchor = BOTTOM);
 
-            // Slit along +X through hub + gear.
             down(eps / 2)
                 left(eps)
                     cuboid(
@@ -113,7 +90,6 @@ module motor_pinion(
                         anchor = LEFT + BOTTOM
                     );
 
-            // M3 clamp across the hub jaws; nut trap on -Y.
             up(hub_h / 2)
                 right(clamp_offset)
                     screw_hole(

@@ -1,52 +1,38 @@
+// Shaft collar on plastic Ø8 driven shaft — PCB hat + RX coil seat underneath.
+// Upper axial stop for the spinning stack. Includes params for ring size sync.
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
+include <vmoji-mech-params.scad>
 
-
-/* [Shaft] */
-// Driven shaft bore (mm). Matches 608ZZ ID / 8 mm rod.
-shaft_d = 8; // [4:0.1:12]
-// Extra diametral clearance beyond shaft_d before the clamp closes.
-bore_extra = 0.15; // [0:0.05:0.6]
 
 /* [Collar] */
 collar_od = 26; // [14:0.5:40]
-collar_h = 12;   // [6:0.5:24]
-// Kerf width of the rectangular slit (mm). Wider = easier to spread, weaker clamp.
 slit_width = 0.6; // [0.2:0.05:2]
-
-/* [Clamp] */
 clamp_screw = "M3";
-// Distance from shaft axis to clamp-screw axis (mm). Must clear the bore.
 clamp_offset = 8; // [4:0.1:16]
-// How far the hex nut pocket goes into the jaw (mm).
 nut_trap_depth = 3.2; // [2:0.1:8]
 teardrop_clamp_hole = true;
-// Minimum solid wall between bore and clamp screw (mm).
 min_bore_to_clamp = 1.0; // [0.3:0.1:3]
+
 
 /* [PCB mount] */
 pcb_mount_enabled = true; // [true, false]
 pcb_mount_screw = "M3";
-// Center-to-center spacing of the square hole pattern (mm).
 pcb_hole_spacing = 11; // [4:0.5:20]
-hat_h = 3.5; // [1:0.5:10]
-// Minimum wall from hole edge to hat outer edge (mm).
 hat_wall = 2.5; // [1:0.5:6]
-// Hat outer diameter (mm). 0 = auto from spacing, screw size, and hat_wall.
 hat_od = 0; // [0:0.5:40]
-// Cylindrical nut clearance under each mount hole.
 pcb_nut_pocket_enabled = true; // [true, false]
-// Vertical notches cut into the collar under each hole (full collar height).
 pcb_collar_nut_pocket_enabled = true; // [true, false]
-// Optional extra pockets upward from the hat underside (keeps flange thinner).
 pcb_hat_nut_pocket_enabled = false; // [true, false]
 pcb_hat_nut_pocket_depth = 2.8; // [0:0.1:8]
-// Pocket diameter (mm). 0 = auto from nut size + pcb_nut_pocket_extra_d.
 pcb_nut_pocket_d = 0; // [0:0.5:12]
-// Extra diameter beyond the nut's circumscribed circle (mm).
 pcb_nut_pocket_extra_d = 0.5; // [0:0.1:3]
-// Omit the +X mount hole (conflicts with the clamp screw). Three-screw mount.
 pcb_omit_pos_x_hole = true; // [true, false]
+
+
+/* [RX coil seat] */
+rx_seat_enabled = true; // [true, false]
+
 
 /* [Hidden] */
 $fa = 2;
@@ -76,10 +62,10 @@ function _pcb_hole_rotations(omit_pos_x) =
 
 
 module shaft_collar(
-    shaft_d = shaft_d,
-    bore_extra = bore_extra,
+    shaft_d = vm_shaft_d,
+    bore_extra = vm_shaft_bore_extra,
     collar_od = collar_od,
-    collar_h = collar_h,
+    collar_h = vm_collar_h,
     slit_width = slit_width,
     clamp_screw = clamp_screw,
     clamp_offset = clamp_offset,
@@ -89,7 +75,7 @@ module shaft_collar(
     pcb_mount_enabled = pcb_mount_enabled,
     pcb_mount_screw = pcb_mount_screw,
     pcb_hole_spacing = pcb_hole_spacing,
-    hat_h = hat_h,
+    hat_h = vm_hat_h,
     hat_wall = hat_wall,
     hat_od = hat_od,
     pcb_nut_pocket_enabled = pcb_nut_pocket_enabled,
@@ -98,7 +84,12 @@ module shaft_collar(
     pcb_hat_nut_pocket_depth = pcb_hat_nut_pocket_depth,
     pcb_nut_pocket_d = pcb_nut_pocket_d,
     pcb_nut_pocket_extra_d = pcb_nut_pocket_extra_d,
-    pcb_omit_pos_x_hole = pcb_omit_pos_x_hole
+    pcb_omit_pos_x_hole = pcb_omit_pos_x_hole,
+    rx_seat_enabled = rx_seat_enabled,
+    ring_id = vm_ring_id,
+    ring_od = vm_ring_od,
+    ring_h = vm_ring_h,
+    ring_standoff = vm_ring_standoff
 ) {
     eps = cut_overlap;
     bore_d = shaft_d + bore_extra + 2 * $slop;
@@ -107,20 +98,24 @@ module shaft_collar(
     jaw_half = sqrt(r * r - clamp_offset * clamp_offset);
     clamp_hole_l = 2 * jaw_half + 2;
 
+    rx_seat_h = rx_seat_enabled ? ring_standoff + ring_h + 1.2 : 0;
     hat_outer_d = _hat_od(pcb_hole_spacing, pcb_mount_screw, hat_wall, hat_od);
     nut_pocket_d = _nut_pocket_d(
         pcb_mount_screw,
         pcb_nut_pocket_d,
         pcb_nut_pocket_extra_d
     );
-    total_h = collar_h + (pcb_mount_enabled ? hat_h : 0);
-    slit_d = max(collar_od, pcb_mount_enabled ? hat_outer_d : 0) + 1;
+    total_h = rx_seat_h + collar_h + (pcb_mount_enabled ? hat_h : 0);
+    slit_d = max(collar_od, pcb_mount_enabled ? hat_outer_d : 0, ring_od + 2) + 1;
     pcb_hole_rots = _pcb_hole_rotations(pcb_omit_pos_x_hole);
+    collar_z0 = rx_seat_h;
 
     assert(clamp_offset + screw_d / 2 < r,
         "clamp_offset places the screw outside the collar");
     assert(clamp_offset - screw_d / 2 > bore_d / 2 + min_bore_to_clamp,
         "clamp_offset is too close to the shaft bore");
+    if (rx_seat_enabled)
+        assert(collar_od > ring_id - 2, "collar_od too small to back the RX ring");
 
     if (pcb_mount_enabled) {
         assert(hat_outer_d >= collar_od,
@@ -128,34 +123,34 @@ module shaft_collar(
         assert(pcb_hole_spacing + _clearance_hole_d(pcb_mount_screw) / 2 < hat_outer_d / 2,
             "PCB holes are too close to the hat outer edge");
 
-        if (pcb_nut_pocket_enabled) {
-            if (pcb_collar_nut_pocket_enabled) {
-                assert(
-                    pcb_hole_spacing - nut_pocket_d / 2 < r,
-                    str(
-                        "collar nut pocket (d=", nut_pocket_d,
-                        ") does not reach the collar; increase pcb_nut_pocket_extra_d ",
-                        "or pcb_nut_pocket_d"
-                    )
-                );
-                assert(
-                    pcb_hole_spacing - nut_pocket_d / 2 > bore_d / 2 + min_bore_to_clamp,
-                    "collar nut pockets cut too close to the shaft bore"
-                );
-            }
-
-            if (pcb_hat_nut_pocket_enabled)
-                assert(pcb_hat_nut_pocket_depth > 0,
-                    "pcb_hat_nut_pocket_depth must be positive");
+        if (pcb_nut_pocket_enabled && pcb_collar_nut_pocket_enabled) {
+            assert(
+                pcb_hole_spacing - nut_pocket_d / 2 < r,
+                "collar nut pocket does not reach the collar"
+            );
+            assert(
+                pcb_hole_spacing - nut_pocket_d / 2 > bore_d / 2 + min_bore_to_clamp,
+                "collar nut pockets cut too close to the shaft bore"
+            );
         }
     }
 
     diff() {
         union() {
-            cyl(d = collar_od, h = collar_h, anchor = BOTTOM);
+            // RX seat disk + plastic standoffs (faces TX below).
+            if (rx_seat_enabled) {
+                cyl(d = ring_od + 4, h = rx_seat_h, anchor = BOTTOM);
+                up(0)
+                    zrot_copies(n = 3, sa = 90)
+                        right((ring_id + ring_od) / 4)
+                            cyl(d = 4.5, h = ring_standoff, anchor = BOTTOM);
+            }
+
+            up(collar_z0)
+                cyl(d = collar_od, h = collar_h, anchor = BOTTOM);
 
             if (pcb_mount_enabled)
-                up(collar_h)
+                up(collar_z0 + collar_h)
                     cyl(d = hat_outer_d, h = hat_h, anchor = BOTTOM);
         }
 
@@ -170,7 +165,25 @@ module shaft_collar(
                         anchor = LEFT + BOTTOM
                     );
 
-            up(collar_h / 2)
+            // RX ring rebate in the seat disk.
+            if (rx_seat_enabled) {
+                up(ring_standoff)
+                    difference() {
+                        cyl(
+                            d = ring_od + 2 * $slop + 1.2,
+                            h = ring_h + eps,
+                            anchor = BOTTOM
+                        );
+                        down(eps)
+                            cyl(
+                                d = max(bore_d + 2, ring_id),
+                                h = ring_h + 3 * eps,
+                                anchor = BOTTOM
+                            );
+                    }
+            }
+
+            up(collar_z0 + collar_h / 2)
                 right(clamp_offset)
                     screw_hole(
                         clamp_screw,
@@ -186,7 +199,7 @@ module shaft_collar(
                             );
 
             if (pcb_mount_enabled) {
-                up(collar_h - eps / 2)
+                up(collar_z0 + collar_h - eps / 2)
                     zrot_copies(rots = pcb_hole_rots)
                         right(pcb_hole_spacing)
                             screw_hole(
@@ -197,17 +210,18 @@ module shaft_collar(
                             );
 
                 if (pcb_nut_pocket_enabled && pcb_collar_nut_pocket_enabled)
-                    zrot_copies(rots = pcb_hole_rots)
-                        right(pcb_hole_spacing)
-                            cyl(
-                                d = nut_pocket_d,
-                                h = collar_h + eps,
-                                anchor = BOTTOM,
-                                orient = UP
-                            );
+                    up(collar_z0)
+                        zrot_copies(rots = pcb_hole_rots)
+                            right(pcb_hole_spacing)
+                                cyl(
+                                    d = nut_pocket_d,
+                                    h = collar_h + eps,
+                                    anchor = BOTTOM,
+                                    orient = UP
+                                );
 
                 if (pcb_nut_pocket_enabled && pcb_hat_nut_pocket_enabled)
-                    up(collar_h)
+                    up(collar_z0 + collar_h)
                         zrot_copies(rots = pcb_hole_rots)
                             right(pcb_hole_spacing)
                                 cyl(
