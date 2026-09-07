@@ -14,6 +14,7 @@ add_library(vmoji_host_core STATIC
     ${VMOJI_ROOT}/volume_codec.c
     ${VMOJI_ROOT}/volumes_builtin.c
     ${VMOJI_ROOT}/rotation_estimator.c
+    ${VMOJI_ROOT}/ir_debounce.c
     ${VMOJI_ROOT}/scan_timing.c
     ${VMOJI_ROOT}/pov_service.c
     ${VMOJI_ROOT}/commands.c
@@ -51,9 +52,11 @@ vmoji_add_test(test_volume_codec unit/test_volume_codec.c)
 vmoji_add_test(test_rotation_estimator unit/test_rotation_estimator.c)
 vmoji_add_test(test_scan_timing unit/test_scan_timing.c)
 vmoji_add_test(test_commands unit/test_commands.c)
+vmoji_add_test(test_ir_debounce unit/test_ir_debounce.c)
+vmoji_add_test(test_core1_cmd unit/test_core1_cmd.c)
+vmoji_add_test(test_busy_slot unit/test_busy_slot.c)
 vmoji_add_test(test_pov_service integration/test_pov_service.c)
 
-# Protocol framing self-test (C++), shared with dashboard vectors.
 add_executable(protocol_selftest ${CMAKE_CURRENT_LIST_DIR}/../../tools/protocol_selftest.cpp)
 target_include_directories(protocol_selftest PRIVATE ${VMOJI_ROOT})
 target_compile_options(protocol_selftest PRIVATE -Wall -Wextra)

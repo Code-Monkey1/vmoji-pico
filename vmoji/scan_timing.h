@@ -13,8 +13,15 @@ extern "C" {
 uint32_t scan_timing_step_us(uint32_t period_us, uint32_t step_count);
 
 /**
+ * Lit-time PIO delay cycles after reserving settle_us for blanking.
+ * Always at least 1. If step_us <= settle_us, returns 1 (slight over-period).
+ */
+uint32_t scan_timing_lit_delay_cycles(uint32_t step_us, uint32_t settle_us,
+                                      uint32_t sys_hz);
+
+/**
  * PIO delay cycles for a step at sys_hz, after a small overhead subtract.
- * Always at least 1.
+ * Always at least 1. (settle_us = 0)
  */
 uint32_t scan_timing_delay_cycles(uint32_t step_us, uint32_t sys_hz);
 

@@ -10,5 +10,6 @@
 #define VMOJI_FLAG_TX_DROP  0x08u  /* a telemetry frame was dropped, link too slow */
 #define VMOJI_FLAG_SYNC_OK  0x10u  /* IR/sim revolution lock is healthy */
 #define VMOJI_FLAG_SIM      0x20u  /* simulated rotation (no IR) */
+#define VMOJI_FLAG_FIFO_OVF 0x40u  /* multicore FIFO push overflowed */
 
 #endif  /* VMOJI_TELEMETRY_FLAGS_H */

@@ -17,11 +17,11 @@ static void fake_blank(void)
     g_st->blank_count++;
 }
 
-static void fake_signal_start(uint32_t period_us, uint8_t list_index)
+static void fake_signal_start(uint32_t period_us, const VolumeScanlist *list)
 {
     g_st->start_count++;
     g_st->last_period_us = period_us;
-    g_st->last_list_index = list_index;
+    g_st->last_list = list;
 }
 
 static void fake_signal_stop(void)
@@ -54,10 +54,7 @@ static void fake_sync_set_sim(bool enabled)
     g_st->sync_lost_pending = false;
 }
 
-static void fake_sync_service(void)
-{
-    /* Host tests push revs/edges explicitly. */
-}
+static void fake_sync_service(void) {}
 
 static bool fake_sync_take_rev(RotationSnapshot *out)
 {

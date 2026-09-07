@@ -13,7 +13,14 @@ static void bake_active_content(PovService *svc)
     volumes_builtin_draw(svc->volume_id, frame);
     volume_codec_bake(frame, &g_bake_scratch);
 
-    uint8_t slot = (uint8_t)(svc->display_list ^ 1u);
+    /* Never overwrite the slot core1 may still be scanning. */
+    uint8_t slot;
+    if (svc->scan_busy) {
+        slot = (uint8_t)(svc->busy_slot ^ 1u);
+    } else {
+        slot = (uint8_t)(svc->display_list ^ 1u);
+    }
+
     svc->plat->copy(&svc->lists[slot], &g_bake_scratch, sizeof(g_bake_scratch));
     volume_flip(&svc->volume);
     svc->display_list = slot;
@@ -34,6 +41,8 @@ void pov_service_init(PovService *svc, const PovPlatform *plat)
     svc->plat = plat;
     volume_init(&svc->volume);
     svc->display_list = 0;
+    svc->busy_slot = 0;
+    svc->scan_busy = false;
     svc->rebake_needed = true;
     svc->display_active = false;
     svc->core_stop = true;
@@ -87,6 +96,11 @@ void pov_service_request_rebake(PovService *svc)
     svc->rebake_needed = true;
 }
 
+void pov_service_release_scan(PovService *svc)
+{
+    svc->scan_busy = false;
+}
+
 void pov_service_service(PovService *svc)
 {
     if (svc->mode == APP_MODE_STATIC) {
@@ -116,7 +130,9 @@ void pov_service_service(PovService *svc)
 
     svc->core_stop = false;
     svc->display_active = true;
-    svc->plat->signal_start(snap.period_us, svc->display_list);
+    svc->busy_slot = svc->display_list;
+    svc->scan_busy = true;
+    svc->plat->signal_start(snap.period_us, &svc->lists[svc->display_list]);
     svc->plat->note_scan();
 }
 
@@ -136,6 +152,16 @@ bool pov_service_display_active(const PovService *svc)
 uint8_t pov_service_display_list(const PovService *svc)
 {
     return svc->display_list;
+}
+
+uint8_t pov_service_busy_slot(const PovService *svc)
+{
+    return svc->busy_slot;
+}
+
+bool pov_service_scan_busy(const PovService *svc)
+{
+    return svc->scan_busy;
 }
 
 const VolumeScanlist *pov_service_list(const PovService *svc, uint8_t index)

@@ -1,7 +1,10 @@
 // vmoji: volumetric POV display on the RP2040.
 //
-// Core 0: commands, telemetry, rotation sync, volume bake.
-// Core 1: PIO-paced parallel GPIO scan for each revolution.
+// This file is only the wiring. Core 0 owns commands, telemetry, rotation sync
+// and volume bake; core 1 runs the PIO-paced parallel GPIO scan. The loop below
+// is deliberately short enough to read in one go — scan (or POV service), drain
+// input, report, kick the watchdog — because that shape is the timing contract
+// the whole instrument is built to measure.
 
 #include <stdio.h>
 
@@ -18,7 +21,11 @@
 #include "uart_link.h"
 #include "app_mode.h"
 
+/* Generous next to a ~3 ms scan: long enough that a slow interval is never
+ * mistaken for a hang, short enough that a real lockup recovers on its own. */
 #define WATCHDOG_TIMEOUT_MS 2000
+
+/** Bytes taken from USB per pass, so a flood cannot monopolise the loop. */
 #define STDIO_DRAIN_LIMIT 128
 
 static void drain_uart_input(void)
@@ -28,6 +35,8 @@ static void drain_uart_input(void)
         commands_feed_byte(ch);
     }
 
+    /* Move the interrupt handler's observations into telemetry from here, so
+     * the ISR itself never reaches into the emitter. */
     bool overrun = false;
     uint32_t new_bytes = 0;
     uart_link_drain_stats(&overrun, &new_bytes);
@@ -39,6 +48,7 @@ static void drain_uart_input(void)
     }
 }
 
+/** USB CDC (/dev/ttyACM0): the same command lines as UART0. */
 static void drain_stdio_input(void)
 {
     for (int n = 0; n < STDIO_DRAIN_LIMIT; n++) {
@@ -80,6 +90,8 @@ int main(void)
     telemetry_log("vmoji POV telemetry online");
     telemetry_send_identity();
 
+    /* Pause while a debugger has the core halted, so single-stepping does not
+     * look like a firmware hang and trigger a reset. */
     watchdog_enable(WATCHDOG_TIMEOUT_MS, true);
 
     while (true) {

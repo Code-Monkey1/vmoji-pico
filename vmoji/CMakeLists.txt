@@ -6,6 +6,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Initialise pico_sdk from installed location
+# (note this can come from environment, CMake cache etc)
+
 # == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
 if(WIN32)
     set(USERHOME $ENV{USERPROFILE})
@@ -30,6 +33,8 @@ project(vmoji C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
+# One translation unit per job: the scan-out, the UART link, the command
+# grammar, the binary downlink, and the POV / rotation stack.
 add_executable(vmoji
     main.c
     matrix.c
@@ -41,6 +46,7 @@ add_executable(vmoji
     volumes_builtin.c
     rotation_estimator.c
     rotation_sync.c
+    ir_debounce.c
     scan_timing.c
     pio_scan.c
     pov_service.c
@@ -49,14 +55,19 @@ add_executable(vmoji
 
 pico_generate_pio_header(vmoji ${CMAKE_CURRENT_LIST_DIR}/pio_scan.pio)
 
+# Warnings on, but only for our own translation units: the SDK and TinyUSB are
+# compiled into this same target and are not warning-clean, so a target-wide
+# flag would bury our own diagnostics in someone else's.
 set_source_files_properties(
     main.c matrix.c uart_link.c commands.c telemetry.cpp
     volume.c volume_codec.c volumes_builtin.c
-    rotation_estimator.c rotation_sync.c scan_timing.c
+    rotation_estimator.c rotation_sync.c ir_debounce.c scan_timing.c
     pio_scan.c pov_service.c pov_runtime.c
     PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra"
 )
 
+# Build provenance, reported at boot. Regenerated at configure time; a dirty or
+# absent git tree degrades to "unknown" rather than failing the build.
 set(VMOJI_VERSION "1.2.0")
 execute_process(
     COMMAND git rev-parse --short=8 HEAD
@@ -75,6 +86,10 @@ configure_file(
 )
 target_include_directories(vmoji PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/vmoji_generated)
 
+# pull in common dependencies
+# hardware_adc drives the RP2040 on-die temperature sensor used by telemetry.
+# pico_unique_id reports the chip serial, which identifies a specific board.
+# pico_multicore / hardware_pio / dma / irq support the POV scanner core.
 target_link_libraries(vmoji
     pico_stdlib
     pico_multicore
@@ -93,6 +108,13 @@ endif()
 pico_enable_stdio_usb(vmoji 1)
 pico_enable_stdio_uart(vmoji 0)
 
+# The USB CDC write blocks while the host is not draining the endpoint. The SDK
+# default gives up after half a second, which is an eternity for a scan loop
+# whose row dwell is measured in hundreds of microseconds; 1 ms bounds the worst
+# case that a stalled host can inflict on the display.
 target_compile_definitions(vmoji PRIVATE PICO_STDIO_USB_STDOUT_TIMEOUT_US=1000)
 
+# create map/bin/hex file etc.
 pico_add_extra_outputs(vmoji)
+
+# add url via pico_set_program_url

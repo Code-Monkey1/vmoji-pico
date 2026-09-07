@@ -1,23 +1,42 @@
 #include "pov_runtime.h"
 
+#include "core1_cmd.h"
 #include "pio_scan.h"
 #include "pov_service.h"
 #include "rotation_sync.h"
 #include "telemetry.h"
+#include "telemetry_flags.h"
 
-#include "hardware/sync.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
+#include "hardware/sync.h"
 
 #include <string.h>
 
-#define SIG_START 1u
-
 static PovService g_svc;
 static volatile uint32_t g_core1_period_us = ROTATION_SIM_PERIOD_US;
-static volatile uint8_t g_core1_list;
+static volatile const VolumeScanlist *g_core1_list_ptr;
 static volatile bool g_core1_stop = true;
 static volatile bool g_display_active;
+static volatile bool g_fifo_overflow;
+static bool g_fifo_ovf_logged;
+
+static void fifo_try_push(uint32_t cmd)
+{
+    if (multicore_fifo_wready()) {
+        multicore_fifo_push_blocking(cmd);
+        return;
+    }
+    /* FIFO full: still publish stop via flag; count overflow. */
+    g_fifo_overflow = true;
+    for (int i = 0; i < 64; i++) {
+        if (multicore_fifo_wready()) {
+            multicore_fifo_push_blocking(cmd);
+            return;
+        }
+        tight_loop_contents();
+    }
+}
 
 static void plat_copy(void *dst, const void *src, size_t n)
 {
@@ -29,18 +48,20 @@ static void plat_blank(void)
     pio_scan_blank();
 }
 
-static void plat_signal_start(uint32_t period_us, uint8_t list_index)
+static void plat_signal_start(uint32_t period_us, const VolumeScanlist *list)
 {
     g_core1_stop = false;
     g_core1_period_us = period_us;
-    g_core1_list = list_index;
-    multicore_fifo_push_blocking(SIG_START);
+    g_core1_list_ptr = list;
+    __dmb();
+    fifo_try_push(CORE1_CMD_START);
 }
 
 static void plat_signal_stop(void)
 {
     g_core1_stop = true;
-    multicore_fifo_push_blocking(SIG_START);
+    __dmb();
+    fifo_try_push(CORE1_CMD_STOP);
 }
 
 static void plat_note_scan(void)
@@ -94,39 +115,48 @@ static const PovPlatform g_plat = {
 
 static bool core1_abort_check(void)
 {
-    if (g_core1_stop) {
-        return true;
-    }
-    return (multicore_fifo_get_status() & 1u) != 0u;
+    return core1_should_abort(g_core1_stop, multicore_fifo_rvalid());
 }
 
 static void core1_entry(void)
 {
     while (true) {
-    wait_start:
-        while (multicore_fifo_pop_blocking() != SIG_START) {
+        uint32_t cmd = multicore_fifo_pop_blocking();
+
+        if (cmd == CORE1_CMD_STOP || g_core1_stop) {
+            pio_scan_blank();
+            g_display_active = false;
+            pov_service_release_scan(&g_svc);
+            continue;
+        }
+
+        if (cmd != CORE1_CMD_START) {
+            continue;
         }
 
         if (g_core1_stop) {
             pio_scan_blank();
             g_display_active = false;
-            goto wait_start;
+            pov_service_release_scan(&g_svc);
+            continue;
         }
 
         uint32_t period_us = g_core1_period_us;
-        uint8_t list_index = g_core1_list;
-        if (list_index > 1u) {
-            list_index = 0;
+        const VolumeScanlist *list = (const VolumeScanlist *)g_core1_list_ptr;
+        if (list == NULL || period_us == 0) {
+            pov_service_release_scan(&g_svc);
+            continue;
         }
 
         g_display_active = true;
-        bool finished =
-            pio_scan_run_rev(pov_service_list(&g_svc, list_index), period_us,
-                             &core1_abort_check);
-        if (!finished) {
-            goto wait_start;
-        }
+        bool finished = pio_scan_run_rev(list, period_us, &core1_abort_check);
         g_display_active = false;
+        pov_service_release_scan(&g_svc);
+
+        if (!finished) {
+            /* Pending FIFO word (START/STOP) — loop to pop it. */
+            continue;
+        }
     }
 }
 
@@ -134,9 +164,11 @@ void pov_runtime_init(void)
 {
     pov_service_init(&g_svc, &g_plat);
     g_core1_period_us = ROTATION_SIM_PERIOD_US;
-    g_core1_list = 0;
+    g_core1_list_ptr = NULL;
     g_core1_stop = true;
     g_display_active = false;
+    g_fifo_overflow = false;
+    g_fifo_ovf_logged = false;
 }
 
 void pov_runtime_start_core1(void)
@@ -171,6 +203,11 @@ void pov_runtime_request_rebake(void)
 
 void pov_runtime_service(void)
 {
+    if (g_fifo_overflow && !g_fifo_ovf_logged) {
+        g_fifo_ovf_logged = true;
+        telemetry_set_flag(VMOJI_FLAG_FIFO_OVF, true);
+        telemetry_log("core1 FIFO overflow");
+    }
     pov_service_service(&g_svc);
 }
 

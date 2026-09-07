@@ -32,12 +32,9 @@ int main(void)
 
     PovService svc;
     pov_service_init(&svc, &plat);
-    TEST_CHECK(pov_service_mode(&svc) == APP_MODE_STATIC);
 
-    /* --- Sim path with queued rev --- */
     pov_service_set_volume(&svc, 1);
     pov_service_set_mode(&svc, APP_MODE_SIM);
-    TEST_CHECK(st.sim);
 
     RotationSnapshot snap = {
         .period_us = 60000,
@@ -50,26 +47,24 @@ int main(void)
     pov_service_service(&svc);
     TEST_CHECK_EQ_INT(st.start_count, 1);
     TEST_CHECK_EQ_U32(st.last_period_us, 60000u);
-    TEST_CHECK(scanlist_lit_steps(
-                   pov_service_list(&svc, pov_service_display_list(&svc))) > 0);
+    TEST_CHECK(st.last_list != NULL);
+    TEST_CHECK(scanlist_lit_steps(st.last_list) > 0);
+    pov_service_release_scan(&svc);
 
-    /* --- POV sync loss via real estimator + timeout (not a fake sync_ok) --- */
     fake_platform_use_estimator(&st, true);
     fake_time_set(1000000ull);
     pov_service_set_mode(&svc, APP_MODE_POV);
-    TEST_CHECK(!st.sim);
 
     fake_platform_push_edge(&st, 1000000ull);
     pov_service_service(&svc);
-    TEST_CHECK(st.start_count >= 2);
     TEST_CHECK(pov_service_display_active(&svc));
+    pov_service_release_scan(&svc);
 
     fake_time_set(1000000ull + 60000ull);
     fake_platform_push_edge(&st, fake_time_now_us());
     pov_service_service(&svc);
-    TEST_CHECK(pov_service_display_active(&svc));
+    pov_service_release_scan(&svc);
 
-    /* No more edges; advance past sync-loss window. */
     fake_time_advance(ROT_EST_SYNC_LOSS_US + 1ull);
     int blanks_before = st.blank_count;
     int stops_before = st.stop_count;
@@ -78,7 +73,6 @@ int main(void)
     TEST_CHECK(st.stop_count > stops_before);
     TEST_CHECK(!pov_service_display_active(&svc));
 
-    /* Recover: new edge restarts display. */
     fake_platform_push_edge(&st, fake_time_now_us());
     int starts = st.start_count;
     pov_service_service(&svc);

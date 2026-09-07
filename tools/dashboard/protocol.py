@@ -59,6 +59,7 @@ class StatusFlag(IntEnum):
     TX_DROP = 0x08  # firmware discarded a frame; a link could not keep up
     SYNC_OK = 0x10
     SIM = 0x20
+    FIFO_OVF = 0x40
 
 
 def flag_names(flags: int) -> tuple[str, ...]:

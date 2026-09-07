@@ -108,8 +108,9 @@ bool pio_scan_run_rev(const VolumeScanlist *list, uint32_t period_us,
 
     const uint32_t count = CODEC_STEPS_PER_REV;
     uint32_t step_us = scan_timing_step_us(period_us, count);
+    const uint32_t settle_us = MATRIX_BLANK_SETTLE_US;
     uint32_t delay_cycles =
-        scan_timing_delay_cycles(step_us, clock_get_hz(clk_sys));
+        scan_timing_lit_delay_cycles(step_us, settle_us, clock_get_hz(clk_sys));
 
     g_pin_mask = list->pin_mask;
     g_blank = list->blank;
@@ -118,6 +119,10 @@ bool pio_scan_run_rev(const VolumeScanlist *list, uint32_t period_us,
         if (abort_check && abort_check()) {
             apply_mask(g_blank);
             return false;
+        }
+        apply_mask(g_blank);
+        if (settle_us > 0) {
+            busy_wait_us_32(settle_us);
         }
         apply_mask(list->steps[i]);
         pio_delay_cycles(delay_cycles);

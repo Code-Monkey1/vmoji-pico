@@ -16,6 +16,8 @@
 
 #define LINE_MAX 48
 #define LINE_IDLE_RESET_US 250000ULL
+
+/** Longest acknowledgement any handler produces, plus room to grow. */
 #define ACK_MAX 80
 #define ACTIVITY_SCORE_US 1500000u
 #define ACTIVITY_HEARTBEAT_US 800000u
@@ -128,6 +130,7 @@ void commands_init_default(void)
 }
 #endif
 
+/** Parse a non-negative decimal integer, returning -1 if there are no digits. */
 static int parse_uint(const char *cursor)
 {
     while (*cursor == ' ') {
@@ -147,6 +150,12 @@ static int parse_uint(const char *cursor)
     return value;
 }
 
+/*
+ * Each handler renders its own acknowledgement and returns whether the command
+ * was accepted; the dispatcher below is the single place that sends the ack and
+ * counts the outcome. Every arm used to repeat that pair, which is how one of
+ * them - a malformed score - came to answer with silence.
+ */
 typedef bool (*command_fn)(const char *args, char *ack, size_t ack_size);
 
 static bool cmd_score(const char *args, char *ack, size_t ack_size)
@@ -178,6 +187,7 @@ static bool cmd_score(const char *args, char *ack, size_t ack_size)
 static bool cmd_heartbeat(const char *args, char *ack, size_t ack_size)
 {
     (void)args;
+    /* Restart the pulse from this moment, so every H is visibly its own blink. */
     g_deps.arm_activity(ACTIVITY_HEARTBEAT_US, false);
     snprintf(ack, ack_size, "OK heartbeat");
     return true;
@@ -200,6 +210,7 @@ static bool cmd_dwell(const char *args, char *ack, size_t ack_size)
 {
     int dwell = parse_uint(args);
     if (dwell < DWELL_MIN_US || dwell > DWELL_MAX_US) {
+        // Built from the constants, so the message cannot outlive the range.
         snprintf(ack, ack_size, "ERR dwell %d-%d", DWELL_MIN_US, DWELL_MAX_US);
         return false;
     }
@@ -294,6 +305,7 @@ static bool cmd_identity(const char *args, char *ack, size_t ack_size)
 {
     (void)args;
     (void)ack_size;
+    /* Answers with its own framed Log line, so there is no ack to render. */
     g_deps.send_identity();
     ack[0] = '\0';
     return true;
@@ -336,6 +348,8 @@ void commands_dispatch_line(const char *line)
     if (handler != NULL) {
         accepted = handler(line + 1, ack, sizeof(ack));
     } else {
+        /* A silent drop is indistinguishable from a dead link, and this is the
+         * rejection a single stray byte can push a valid command into. */
         snprintf(ack, sizeof(ack), "ERR unknown");
     }
 
@@ -349,6 +363,11 @@ void commands_feed_byte(uint8_t ch)
 {
     uint64_t now = g_deps.now_us ? g_deps.now_us() : 0;
 
+    /* A byte arriving long after the previous one cannot belong to the same
+     * line. Without this a single stray byte - line noise, or a leftover from
+     * another program that had the port open - sits in the buffer indefinitely
+     * and silently corrupts whatever command is sent next, which then fails
+     * with no clue as to why. */
     if ((line_len > 0 || line_overflow) &&
         (now - line_last_byte_us) > LINE_IDLE_RESET_US) {
         line_len = 0;
@@ -372,7 +391,7 @@ void commands_feed_byte(uint8_t ch)
         return;
     }
     if (line_overflow) {
-        return;
+        return;  /* swallow the rest of the line rather than parsing its tail */
     }
     if (line_len < LINE_MAX - 1) {
         line_buf[line_len++] = (char)ch;

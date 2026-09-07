@@ -156,6 +156,7 @@ enum StatusFlag : std::uint8_t {
     kFlagTxDrop = VMOJI_FLAG_TX_DROP,
     kFlagSyncOk = VMOJI_FLAG_SYNC_OK,
     kFlagSim = VMOJI_FLAG_SIM,
+    kFlagFifoOvf = VMOJI_FLAG_FIFO_OVF,
 };
 
 // ---------------------------------------------------------------------------
