@@ -12,6 +12,8 @@
 //   B               blank the display
 //   P               toggle scan pause
 //   Z               reset counters
+//   M static|pov|sim  operating mode
+//   V <id>          builtin volume (POV/sim)
 //   ?               report the current configuration
 //   I               report firmware version and unique board id
 

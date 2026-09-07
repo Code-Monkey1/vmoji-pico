@@ -59,6 +59,10 @@ vmoji::StatusPayload sample_status() {
     s.row_dwell_us = 400u;
     s.glyph_id = 2u;
     s.flags = VMOJI_FLAG_ACTIVITY;
+    s.rpm = 1000u;
+    s.mode = 2u;
+    s.volume_id = 1u;
+    s.rev_period_us = 60000u;
     return s;
 }
 
@@ -157,10 +161,11 @@ void test_false_sync_inside_payload() {
 }
 
 void test_struct_layout() {
-    check(sizeof(vmoji::StatusPayload) == 32, "StatusPayload is 32 bytes");
+    check(sizeof(vmoji::StatusPayload) == 40, "StatusPayload is 40 bytes");
     check(sizeof(vmoji::FrameBufferPayload) == 8, "FrameBufferPayload is 8 bytes");
     check(offsetof(vmoji::StatusPayload, die_temp_c_x100) == 18,
           "die_temp_c_x100 sits at offset 18");
+    check(offsetof(vmoji::StatusPayload, rpm) == 32, "rpm sits at offset 32");
 }
 
 // --------------------------------------------------------------------------

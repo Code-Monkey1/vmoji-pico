@@ -24,7 +24,7 @@ import sources
 # --- vectors emitted by tools/protocol_selftest.cpp --------------------------
 
 CPP_STATUS_FRAME = bytes.fromhex(
-    "aa552000010740e20100cd810100127a800c6c0c520de600ab0a0c0003000010000090010201eaf0"
+    "aa552800010740e20100cd810100127a800c6c0c520de600ab0a0c0003000010000090010201e803020160ea00005010"
 )
 CPP_FRAMEBUFFER_FRAME = bytes.fromhex("aa550800020881402010814020103e9c")
 CPP_LOG_FRAME = bytes.fromhex(

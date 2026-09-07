@@ -57,6 +57,8 @@ class StatusFlag(IntEnum):
     OVERRUN = 0x02
     PAUSED = 0x04
     TX_DROP = 0x08  # firmware discarded a frame; a link could not keep up
+    SYNC_OK = 0x10
+    SIM = 0x20
 
 
 def flag_names(flags: int) -> tuple[str, ...]:

@@ -37,6 +37,10 @@ void telemetry_note_command(bool accepted);
 /** Record which glyph is currently displayed (0 if driven directly). */
 void telemetry_set_glyph(uint8_t glyph_id);
 
+/** POV / mode fields appended to Status (older hosts ignore them). */
+void telemetry_set_pov(uint16_t rpm, uint32_t rev_period_us, uint8_t mode,
+                       uint8_t volume_id);
+
 /** Per-row lit time used by the scan loop. Reported so the host can correlate
  *  a dwell change with the resulting refresh rate. */
 void telemetry_set_row_dwell(uint16_t microseconds);

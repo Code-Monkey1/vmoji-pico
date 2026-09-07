@@ -1,0 +1,15 @@
+;
+; Cycle-accurate step delay for the POV scanner.
+;
+; Matrix GPIOs are not a contiguous bank, so this SM does not drive pins.
+; Core 1 applies each uint32_t mask with gpio_put_masked, then pushes a delay
+; (in PIO cycles at clkdiv=1 ≈ sysclk) into this FIFO. DMA can refill the FIFO
+; with equal delays for a whole revolution while core 1 walks the mask list.
+
+.program step_delay
+.wrap_target
+    pull block
+    out x, 32
+delay:
+    jmp x-- delay
+.wrap

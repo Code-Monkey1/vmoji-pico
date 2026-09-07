@@ -133,8 +133,13 @@ struct StatusPayload {
     std::uint16_t row_dwell_us;     // current per-row lit time
     std::uint8_t glyph_id;
     std::uint8_t flags;
+    // Appended fields: older hosts decode the 32-byte prefix and ignore these.
+    std::uint16_t rpm;
+    std::uint8_t mode;              // 0 static, 1 pov, 2 sim
+    std::uint8_t volume_id;
+    std::uint32_t rev_period_us;
 };
-static_assert(sizeof(StatusPayload) == 32, "StatusPayload must stay 32 bytes on the wire");
+static_assert(sizeof(StatusPayload) == 40, "StatusPayload must stay 40 bytes on the wire");
 
 // Bit c of row[r] is pixel (r, c); bit 7 is column 0.
 struct FrameBufferPayload {
@@ -149,6 +154,8 @@ enum StatusFlag : std::uint8_t {
     kFlagOverrun = VMOJI_FLAG_OVERRUN,
     kFlagPaused = VMOJI_FLAG_PAUSED,
     kFlagTxDrop = VMOJI_FLAG_TX_DROP,
+    kFlagSyncOk = VMOJI_FLAG_SYNC_OK,
+    kFlagSim = VMOJI_FLAG_SIM,
 };
 
 // ---------------------------------------------------------------------------

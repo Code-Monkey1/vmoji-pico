@@ -2,38 +2,29 @@
 
 #include <string.h>
 
-#include "hardware/gpio.h"
 #include "pico/stdlib.h"
 #include "pico/time.h"
+#include "pio_scan.h"
+#include "volume_codec.h"
 
 /** Activity pixel (row 7, col 7): blinks after a score line or `H` heartbeat. */
 #define ACTIVITY_PIXEL_ROW 7
 #define ACTIVITY_PIXEL_COL 7
 #define ACTIVITY_BLINK_HALF_US 250000ULL
 
-static const uint COL_PINS[NB_COL] = {R1, R6, L1, R4, L8, L2, L7, L4};
-static const uint ROW_PINS[NB_ROW] = {R8, R7, R3, L3, R2, L5, L6, R5};
-
 static bool frame_buffer[NB_ROW][NB_COL];
-
-/** Runtime-adjustable so the dashboard can trade refresh rate against
- *  brightness while watching the effect on the live jitter plot. */
 static uint16_t row_dwell_us = MATRIX_ROW_DWELL_US;
-
 static uint64_t activity_blink_until_us;
 
-/** Glyphs selectable with the `G <id>` command. Row-major, one byte per row,
- *  bit 7 is column 0. */
 static const uint8_t glyphs[GLYPH_COUNT][NB_ROW] = {
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  /* 0: blank */
-    {0x66, 0x99, 0x99, 0x89, 0x81, 0x42, 0x24, 0x18},  /* 1: heart */
-    {0xFC, 0xCC, 0xCC, 0xFC, 0xC0, 0xC0, 0xC0, 0xC0},  /* 2: letter P */
-    {0xFC, 0xCC, 0xCC, 0xFC, 0xD0, 0xC8, 0xC4, 0xC2},  /* 3: letter R */
-    {0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55},  /* 4: checkerboard */
-    {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},  /* 5: all on */
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+    {0x66, 0x99, 0x99, 0x89, 0x81, 0x42, 0x24, 0x18},
+    {0xFC, 0xCC, 0xCC, 0xFC, 0xC0, 0xC0, 0xC0, 0xC0},
+    {0xFC, 0xCC, 0xCC, 0xFC, 0xD0, 0xC8, 0xC4, 0xC2},
+    {0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55},
+    {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 };
 
-/** 3 columns wide, 5 rows; bit 2 = left pixel, bit 0 = right. */
 static const uint8_t digit_rows_3x5[10][5] = {
     {0b111, 0b101, 0b101, 0b101, 0b111},
     {0b010, 0b110, 0b010, 0b010, 0b111},
@@ -49,23 +40,12 @@ static const uint8_t digit_rows_3x5[10][5] = {
 
 void matrix_blank(void)
 {
-    for (int i = 0; i < NB_COL; i++) {
-        gpio_put(COL_PINS[i], 0);
-    }
-    for (int i = 0; i < NB_ROW; i++) {
-        gpio_set_dir(ROW_PINS[i], GPIO_IN);
-    }
+    pio_scan_blank();
 }
 
 void matrix_init(void)
 {
-    for (int i = 0; i < MATRIX_SIZE; i++) {
-        gpio_init(ROW_PINS[i]);
-        gpio_init(COL_PINS[i]);
-        gpio_set_dir(ROW_PINS[i], GPIO_IN);
-        gpio_set_dir(COL_PINS[i], GPIO_OUT);
-    }
-    matrix_blank();
+    volume_codec_init();
     matrix_clear();
 }
 
@@ -75,21 +55,17 @@ void matrix_refresh(void)
     bool blink_window = now < activity_blink_until_us;
     bool blink_phase = blink_window && (((now / ACTIVITY_BLINK_HALF_US) & 1u) != 0);
 
-    for (int r = 0; r < NB_ROW; r++) {
-        matrix_blank();
-        sleep_us(MATRIX_BLANK_SETTLE_US);
-        for (int c = 0; c < NB_COL; c++) {
-            bool on = frame_buffer[r][c];
-            if (r == ACTIVITY_PIXEL_ROW && c == ACTIVITY_PIXEL_COL && blink_phase) {
-                on = true;
-            }
-            gpio_put(COL_PINS[c], on);
-        }
-        gpio_set_dir(ROW_PINS[r], GPIO_OUT);
-        gpio_put(ROW_PINS[r], 0);
-        sleep_us(row_dwell_us);
-        gpio_set_dir(ROW_PINS[r], GPIO_IN);
+    bool pixels[NB_ROW][NB_COL];
+    memcpy(pixels, frame_buffer, sizeof(pixels));
+    if (blink_phase) {
+        pixels[ACTIVITY_PIXEL_ROW][ACTIVITY_PIXEL_COL] = true;
     }
+
+    uint32_t row_words[NB_ROW];
+    uint32_t blank;
+    uint32_t pin_mask;
+    volume_codec_bake_static_rows(pixels, row_words, &blank, &pin_mask);
+    pio_scan_static_frame(row_words, blank, pin_mask, row_dwell_us);
 }
 
 const bool *matrix_framebuffer(void)

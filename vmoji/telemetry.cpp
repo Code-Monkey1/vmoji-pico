@@ -163,6 +163,10 @@ struct State {
     std::uint8_t glyph_id;
     std::uint8_t flags;
     std::uint8_t seq;
+    std::uint16_t rpm;
+    std::uint8_t mode;
+    std::uint8_t volume_id;
+    std::uint32_t rev_period_us;
     vmoji::FrameBufferPayload framebuffer;
     std::uint16_t tx_dropped_uart;
     std::uint16_t tx_dropped_usb;
@@ -327,6 +331,10 @@ void send_status(std::uint64_t now_us, std::uint32_t elapsed_us) {
     status.row_dwell_us = g.row_dwell_us;
     status.glyph_id = g.glyph_id;
     status.flags = g.flags;
+    status.rpm = g.rpm;
+    status.mode = g.mode;
+    status.volume_id = g.volume_id;
+    status.rev_period_us = g.rev_period_us;
 
     send(vmoji::MsgId::Status, &status, sizeof(status));
 }
@@ -373,6 +381,14 @@ void telemetry_note_command(bool accepted) {
 }
 
 void telemetry_set_glyph(uint8_t glyph_id) { g.glyph_id = glyph_id; }
+
+void telemetry_set_pov(uint16_t rpm, uint32_t rev_period_us, uint8_t mode,
+                       uint8_t volume_id) {
+    g.rpm = rpm;
+    g.rev_period_us = rev_period_us;
+    g.mode = mode;
+    g.volume_id = volume_id;
+}
 
 void telemetry_set_row_dwell(uint16_t microseconds) { g.row_dwell_us = microseconds; }
 
