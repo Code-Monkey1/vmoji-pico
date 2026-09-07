@@ -1,5 +1,8 @@
 // Coil-safe dual-motor assembly preview (F5).
-// Metal only below gears (608 + short journal). Plastic shaft through TX–RX gap.
+// Metal only below gears (608 + M8 bolt journal). Plastic shaft through TX–RX gap.
+//
+// Animate: View → Animate. Start with FPS=30, Steps=180.
+// $t runs 0→1; the rotor turns once per cycle, pinions twice (2:1) the other way.
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
 include <BOSL2/gears.scad>
@@ -27,6 +30,7 @@ show_bearing = true; // [true, false]
 show_journal = true; // [true, false]
 show_coils = true; // [true, false]
 show_collar = true; // [true, false]
+show_display = true; // [true, false]
 explode = 0; // [0:0.5:20]
 
 
@@ -38,6 +42,8 @@ $slop = 0.2;
 vm_assert_coil_gap_metal_free();
 
 motor_y = mb_gear_center_dist();
+driven_a = vm_driven_spin($t);
+pinion_a = vm_pinion_spin($t);
 
 
 module _preview_bearing() {
@@ -51,10 +57,17 @@ module _preview_bearing() {
 
 
 module _preview_journal() {
-    // Metal only in the bottom zone (must end below TX deck).
-    color("lightsteelblue")
-        up(vm_bot_bearing_z0() - 3)
+    // M8 bolt: head under the base, shank through 608 into the plastic shaft.
+    head_h = 5.3;
+    wash_h = 1.6;
+    color("lightsteelblue") {
+        up(vm_bot_bearing_z0() - head_h - wash_h)
+            cyl(d = 13, h = head_h, anchor = BOTTOM, $fn = 6);
+        up(vm_bot_bearing_z0() - wash_h)
+            cyl(d = 16, h = wash_h, anchor = BOTTOM);
+        up(vm_bot_bearing_z0())
             cyl(d = vm_journal_d - 0.05, h = vm_journal_len, anchor = BOTTOM);
+    }
 }
 
 
@@ -63,7 +76,8 @@ module _preview_motor() {
         cyl(d = vm_motor_d, h = vm_motor_h, anchor = BOTTOM);
     color("gray")
         up(vm_motor_h)
-            cyl(d = vm_motor_shaft_d, h = vm_pinion_hub_h + vm_gear_thickness + 3, anchor = BOTTOM);
+            zrot(pinion_a)
+                cyl(d = vm_motor_shaft_d, h = vm_pinion_hub_h + vm_gear_thickness + 3, anchor = BOTTOM);
 }
 
 
@@ -74,6 +88,38 @@ module _preview_coil(id, od, h) {
             down(0.05)
                 cyl(d = id, h = h + 0.1, anchor = BOTTOM);
         }
+}
+
+
+// Approximate swept-volume top: horizontal 60×40 mm PCB + vertical 8×8 matrix
+// in the XZ plane (Z up), facing +Y. Offset in Y so LEDs clear the shaft.
+module _preview_display() {
+    span = (vm_led_n - 1) * vm_led_pitch;
+    face_y = -(vm_shaft_d / 2 + vm_led_h + 1);
+    color("forestgreen")
+        cuboid(
+            [vm_display_pcb_x, vm_display_pcb_y, vm_display_pcb_t],
+            anchor = BOTTOM,
+            rounding = 1,
+            edges = "Z"
+        );
+    // Thin carrier of the LED module, standing on the PCB.
+    color("darkgreen")
+        translate([0, face_y - 0.6, vm_display_pcb_t])
+            cuboid(
+                [span + vm_led_xy + 2, 1.2, span + vm_led_xy + 2],
+                anchor = BOTTOM
+            );
+    color("red")
+        for (col = [0:vm_led_n - 1], row = [0:vm_led_n - 1])
+            translate([
+                (col - (vm_led_n - 1) / 2) * vm_led_pitch,
+                face_y,
+                vm_display_pcb_t + vm_led_xy / 2 + row * vm_led_pitch
+            ])
+                cuboid([vm_led_xy, vm_led_h, vm_led_xy], anchor = CENTER);
+    assert(span + vm_led_xy < vm_display_pcb_x - 2,
+        "LED matrix does not fit on the preview PCB width");
 }
 
 
@@ -102,35 +148,46 @@ if (show_motors)
             if (show_gears)
                 color("seagreen")
                     up(vm_motor_h + explode * 0.4)
-                        motor_pinion();
+                        zrot(pinion_a)
+                            motor_pinion();
         }
     }
 
 if (show_shaft)
     color("ivory", 0.9)
         up(vm_shaft_z0() + explode * 0.3)
-            driven_shaft();
+            zrot(driven_a)
+                driven_shaft();
 
 if (show_gears)
     color("mediumseagreen")
         up(vm_gear_seat_z() + explode * 0.5)
-            driven_gear();
+            zrot(driven_a)
+                driven_gear();
 
 if (show_bearing)
     up(vm_bot_bearing_z0() - explode * 0.15)
         _preview_bearing();
 
 if (show_journal)
-    _preview_journal();
+    zrot(driven_a)
+        _preview_journal();
 
 if (show_coils) {
     up(vm_tx_ring_z() + explode * 0.55)
         _preview_coil(vm_ring_id, vm_ring_od, vm_ring_h);
     up(vm_rx_ring_z() + explode * 0.7)
-        _preview_coil(vm_ring_id, vm_ring_od, vm_ring_h);
+        zrot(driven_a)
+            _preview_coil(vm_ring_id, vm_ring_od, vm_ring_h);
 }
 
 if (show_collar)
     color("tomato")
         up(vm_collar_z() + explode)
-            shaft_collar();
+            zrot(driven_a)
+                shaft_collar();
+
+if (show_display)
+    up(vm_display_z() + explode)
+        zrot(driven_a)
+            _preview_display();

@@ -1,6 +1,6 @@
 // Printed plastic driven shaft — dielectric through the TX–RX coil gap.
-// Short Ø8 metal journal press-fits into the bottom boss and rides in the 608 only.
-// Print axis-vertical in PETG/ABS. Do NOT use a full-length metal rod.
+// An M8x20 hex bolt is the journal: shank press-fits into the bottom boss, rides in
+// the 608, and the bolt head + washer retain the stack from below. Print axis-vertical.
 include <BOSL2/std.scad>
 include <vmoji-mech-params.scad>
 include <motor-base-common.scad>

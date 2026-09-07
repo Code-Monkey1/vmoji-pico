@@ -227,15 +227,15 @@ module motor_base(
                     edges = "Z"
                 );
 
-            // Single bottom 608 + journal clearance + M8 nylock recess.
+            // Single bottom 608 + M8 bolt journal clearance + hex-head / washer pocket.
             up(bot_bearing_z0)
                 cyl(d = bearing_pocket_d, h = bearing_h + eps, anchor = BOTTOM);
             down(eps / 2)
                 cyl(d = shaft_clear, h = bot_bearing_z1 + eps, anchor = BOTTOM);
             down(eps / 2)
                 cyl(
-                    d = vm_nylock_countersink_d,
-                    h = vm_nylock_countersink_h + eps,
+                    d = vm_bolt_head_countersink_d,
+                    h = vm_bolt_head_countersink_h + eps,
                     anchor = BOTTOM
                 );
 
