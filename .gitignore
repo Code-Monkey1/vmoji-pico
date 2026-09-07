@@ -70,3 +70,4 @@ __pycache__/
 #cmake-build-*
 /tools/venv
 /vmoji/.cache
+*.stl
