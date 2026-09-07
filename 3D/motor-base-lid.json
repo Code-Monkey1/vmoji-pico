@@ -1,0 +1,37 @@
+{
+    "parameterSets": {
+        "design default values": {
+            "$fa": "2",
+            "$fs": "0.25",
+            "$slop": "0.2",
+            "cut_overlap": "0.2",
+            "deck_od": "60",
+            "lid_fit_slop": "0.25",
+            "lid_lip": "0.8",
+            "lid_screw": "M3",
+            "lid_t": "2.5",
+            "porch_inner_x": "50",
+            "porch_inner_y": "72",
+            "post_d": "8",
+            "teardrop_holes": "true",
+            "wall_t": "2.5"
+        },
+        "my_M3_preset": {
+            "$fa": "2",
+            "$fs": "0.25",
+            "$slop": "0.2",
+            "cut_overlap": "0.2",
+            "deck_od": "60",
+            "lid_fit_slop": "0.25",
+            "lid_lip": "0.8",
+            "lid_screw": "M3",
+            "lid_t": "2.5",
+            "porch_inner_x": "50",
+            "porch_inner_y": "72",
+            "post_d": "8",
+            "teardrop_holes": "true",
+            "wall_t": "2.5"
+        }
+    },
+    "fileFormatVersion": "1"
+}

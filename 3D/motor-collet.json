@@ -1,0 +1,53 @@
+{
+    "parameterSets": {
+        "design default values": {
+            "$fa": "2",
+            "$fs": "0.25",
+            "$slop": "0.2",
+            "clamp_offset": "14.5",
+            "clamp_screw": "M3",
+            "collet_flange_h": "3",
+            "collet_flange_od": "54",
+            "collet_wall": "4.5",
+            "cut_overlap": "0.2",
+            "flange_bolt_count": "3",
+            "flange_bolt_r": "23.5",
+            "key_d": "2.5",
+            "key_w": "8",
+            "min_bore_to_clamp": "0.8",
+            "motor_d": "24",
+            "motor_h": "12",
+            "mount_screw": "M3",
+            "nut_trap_depth": "2.7",
+            "slit_width": "0.5",
+            "teardrop_clamp_hole": "true",
+            "wire_slot_h": "5",
+            "wire_slot_w": "4"
+        },
+        "my_M3_preset": {
+            "$fa": "2",
+            "$fs": "0.25",
+            "$slop": "0.2",
+            "clamp_offset": "14.5",
+            "clamp_screw": "M3",
+            "collet_flange_h": "3",
+            "collet_flange_od": "54",
+            "collet_wall": "4.5",
+            "cut_overlap": "0.2",
+            "flange_bolt_count": "3",
+            "flange_bolt_r": "23.5",
+            "key_d": "2.5",
+            "key_w": "8",
+            "min_bore_to_clamp": "0.8",
+            "motor_d": "24",
+            "motor_h": "12",
+            "mount_screw": "M3",
+            "nut_trap_depth": "2.7",
+            "slit_width": "0.5",
+            "teardrop_clamp_hole": "true",
+            "wire_slot_h": "5",
+            "wire_slot_w": "4"
+        }
+    },
+    "fileFormatVersion": "1"
+}
