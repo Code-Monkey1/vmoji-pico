@@ -14,15 +14,15 @@
 extern "C" {
 #endif
 
-/** Once-per-rev IR index (placeholder until the sensor is soldered). */
+/** Once-per-rev IR index */
 #ifndef INDEX_IR_GPIO
-#define INDEX_IR_GPIO 3
+#define INDEX_IR_GPIO 13
 #endif
 
 /*
  * Free GPIOs on the Pico (0-28) after matrix + UART0 + IR:
- *   4, 7, 8, 10, 13, 14, 15, 23, 24, 25
- * GP23-25 are typically board-reserved on a Pico (SMPS / LED); prefer 4/7/8/10.
+ *   3, 4, 7, 8, 10, 14, 15, 23, 24, 25
+ * GP23-25 are typically board-reserved on a Pico (SMPS / LED).
  */
 
 /** Column anodes, left-to-right as mounted (diameter geometry: ±radius). */
