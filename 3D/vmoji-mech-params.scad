@@ -15,7 +15,7 @@
 /* ---- Motor (RF-300C-class) ---- */
 vm_motor_d = 24;
 vm_motor_h = 12;
-vm_motor_shaft_d = 1.0; // Proven pinion press-fit; do not change casually.
+vm_motor_shaft_d = 1.9; // Proven pinion press-fit; do not change casually.
 vm_collet_wall = 4.5;
 vm_collet_flange_od = 48;
 vm_collet_flange_h = 3;
