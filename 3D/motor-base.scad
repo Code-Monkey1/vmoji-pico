@@ -12,8 +12,7 @@ include <motor-base-common.scad>
 wire_slot_w = 4; // [2:0.5:10]
 ear_w = 12; // [8:0.5:20]
 ear_stick = 8; // [4:0.5:16]
-switch_cutout_w = 16.4; // [8:0.1:40]
-switch_cutout_h = 27.4; // [10:0.1:50]
+switch_cutout_d = 12.4; // [8:0.1:40]
 switch_body_depth = 25; // [10:0.5:40]
 cable_hole_d = 8; // [4:0.5:16]
 mount_screw = "M3";
@@ -50,8 +49,7 @@ module motor_base(
     porch_inner_z = vm_porch_inner_z,
     ear_w = ear_w,
     ear_stick = ear_stick,
-    switch_cutout_w = switch_cutout_w,
-    switch_cutout_h = switch_cutout_h,
+    switch_cutout_d = switch_cutout_d,
     switch_body_depth = switch_body_depth,
     cable_hole_d = cable_hole_d,
     mount_screw = mount_screw,
@@ -116,7 +114,6 @@ module motor_base(
     vm_assert_coil_gap_metal_free();
     assert(floor_h > collet_flange_h, "floor_h must exceed collet_flange_h");
     assert(porch_inner_x > switch_body_depth + 5, "porch too shallow for switch");
-    assert(porch_inner_z > switch_cutout_h + 2, "porch too short for switch");
     assert(
         motor_y - motor_d / 2 > (bearing_pocket_d + 2 * wall_t) / 2 + 0.5,
         "motor can intersects bottom bearing boss"
@@ -335,13 +332,12 @@ module motor_base(
                         anchor = LEFT + BOTTOM
                     );
 
-            up(floor_h + porch_inner_z / 2)
+            up(floor_h + porch_inner_z / 3)
                 right(porch_x1)
-                    cuboid(
-                        [wall_t + 2, switch_cutout_w, switch_cutout_h],
-                        anchor = RIGHT + CENTER,
-                        rounding = 1,
-                        edges = "X"
+                    cyl(
+                        d = switch_cutout_d,
+                        h = wall_t + 2,
+                        orient = RIGHT,
                     );
 
             up(floor_h + porch_inner_z / 2)
