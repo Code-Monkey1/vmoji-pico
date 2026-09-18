@@ -13,7 +13,7 @@ wire_slot_w = 4; // [2:0.5:10]
 ear_w = 12; // [8:0.5:20]
 ear_stick = 8; // [4:0.5:16]
 switch_cutout_d = 12.4; // [8:0.1:40]
-switch_body_depth = 25; // [10:0.5:40]
+switch_body_depth = 30; // [10:0.5:40]
 cable_hole_d = 8; // [4:0.5:16]
 mount_screw = "M3";
 lid_screw = "M3";
@@ -336,7 +336,7 @@ module motor_base(
                 right(porch_x1)
                     cyl(
                         d = switch_cutout_d,
-                        h = wall_t + 2,
+                        h = wall_t + 10,
                         orient = RIGHT,
                     );
 
@@ -345,7 +345,7 @@ module motor_base(
                     back(porch_outer_y / 2)
                         cyl(
                             d = cable_hole_d,
-                            h = wall_t + 2,
+                            h = wall_t + 10,
                             anchor = CENTER,
                             orient = BACK
                         );
