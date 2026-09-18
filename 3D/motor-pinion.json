@@ -1,0 +1,23 @@
+{
+    "fileFormatVersion": "1",
+    "parameterSets": {
+        "default": {
+            "clamp_offset": "4",
+            "clamp_screw": "M2",
+            "hub_od": "0",
+            "min_bore_to_clamp": "1.2",
+            "nut_trap_depth": "3.5",
+            "slit_width": "0.60000000000000009",
+            "teardrop_clamp_hole": "true"
+        },
+        "New set 1": {
+            "clamp_offset": "3.7999999999999998",
+            "clamp_screw": "M2",
+            "hub_od": "0",
+            "min_bore_to_clamp": "0.80000000000000004",
+            "nut_trap_depth": "3.2000000000000002",
+            "slit_width": "0.60000000000000009",
+            "teardrop_clamp_hole": "true"
+        }
+    }
+}

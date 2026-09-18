@@ -6,9 +6,9 @@ include <motor-base-common.scad>
 
 /* [Collet] */
 clamp_screw = "M3";
-slit_width = 0.5; // [0.2:0.05:2]
-clamp_offset = 14.5; // [8:0.1:25]
-nut_trap_depth = 2.7; // [2:0.1:8]
+slit_width = 1; // [0.2:0.05:2]
+clamp_offset = 14.6; // [8:0.1:25]
+nut_trap_depth = 3.7; // [2:0.1:8]
 teardrop_clamp_hole = true; // [true, false]
 min_bore_to_clamp = 0.8; // [0.3:0.1:2]
 wire_slot_w = 4; // [2:0.5:10]
