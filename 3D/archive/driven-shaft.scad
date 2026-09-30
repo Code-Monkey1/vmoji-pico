@@ -59,6 +59,9 @@ module driven_shaft(
 
             up(journal_boss_h - eps)
                 cyl(d = flange_d, h = flange_h + eps, anchor = BOTTOM);
+
+            up(seat_z - eps)
+                cyl(d = shaft_d, h = h - seat_z + eps, anchor = BOTTOM);
         }
 
         tag("remove") {

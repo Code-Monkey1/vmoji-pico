@@ -26,6 +26,19 @@
             "switch_cutout_d": "16.4",
             "teardrop_holes": "true",
             "wire_slot_w": "4"
+        },
+        "New set 1": {
+            "cable_hole_d": "8",
+            "ear_stick": "8",
+            "ear_w": "12",
+            "lid_screw": "M3",
+            "mount_screw": "M3",
+            "nut_trap_depth": "2.7000000000000002",
+            "post_d": "8",
+            "switch_body_depth": "30",
+            "switch_cutout_d": "12.4",
+            "teardrop_holes": "true",
+            "wire_slot_w": "8"
         }
     }
 }

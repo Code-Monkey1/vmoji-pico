@@ -1,4 +1,7 @@
-// Motor pinion — herringbone + proven 1.0 mm slit-clamp. Short hub for less shaft load.
+// Motor pinion — single helical, plain press-fit on the Ø2 motor shaft (no slit clamp).
+// Blind bore: the shaft is only ~4–5 mm long; the gear sits vm_pinion_face_gap above the
+// motor face (press down onto a shim of that thickness). Underside relieved for the motor
+// boss. Print underside down. If a pinion ever slips, a drop of CA glue fixes it.
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
 include <BOSL2/gears.scad>
@@ -6,14 +9,10 @@ include <vmoji-mech-params.scad>
 include <motor-base-common.scad>
 
 
-/* [Clamp] */
-slit_width = 0.5; // [0.2:0.05:2]
-clamp_screw = "M3";
-clamp_offset = 3.8; // [2:0.1:12]
-nut_trap_depth = 3.2; // [2:0.1:8]
-teardrop_clamp_hole = true; // [true, false]
-min_bore_to_clamp = 0.8; // [0.3:0.1:2]
-hub_od = 0; // [0:0.5:30]
+/* [Press-fit] */
+// Bore extra depth past the shaft tip (shaft must not bottom out).
+bore_extra_depth = 0.4; // [0:0.1:2]
+boss_relief_extra = 0.6; // [0:0.1:2]
 
 
 /* [Hidden] */
@@ -25,85 +24,34 @@ cut_overlap = 0.2;
 
 module motor_pinion(
     shaft_d = vm_motor_shaft_d,
-    gear_mod = vm_gear_mod,
-    pinion_teeth = vm_pinion_teeth,
-    gear_helical = vm_gear_helical,
-    gear_backlash = vm_gear_backlash,
+    shaft_len = vm_motor_shaft_len,
+    face_gap = vm_pinion_face_gap,
     gear_thickness = vm_gear_thickness,
-    gear_pressure_angle = vm_gear_pressure_angle,
-    gear_slices = vm_gear_slices,
-    hub_h = vm_pinion_hub_h,
-    hub_od = hub_od,
-    slit_width = slit_width,
-    clamp_screw = clamp_screw,
-    clamp_offset = clamp_offset,
-    nut_trap_depth = nut_trap_depth,
-    teardrop_clamp_hole = teardrop_clamp_hole,
-    min_bore_to_clamp = min_bore_to_clamp
+    bore_extra_depth = bore_extra_depth,
+    boss_relief_extra = boss_relief_extra
 ) {
     eps = cut_overlap;
-    root_d = 2 * root_radius(
-        mod = gear_mod,
-        teeth = pinion_teeth,
-        helical = gear_helical,
-        pressure_angle = gear_pressure_angle,
-        backlash = gear_backlash
-    );
-    hub_d = hub_od > 0 ? hub_od : max(shaft_d + 8, min(root_d - 0.4, 14));
-    r = hub_d / 2;
-    screw_d = struct_val(screw_info(clamp_screw), "diameter");
-    jaw_half = sqrt(max(0.01, r * r - clamp_offset * clamp_offset));
-    clamp_hole_l = 2 * jaw_half + 2;
-    total_h = hub_h + gear_thickness;
-    slit_d = max(hub_d, mb_gear_outer_d(pinion_teeth, gear_mod, gear_helical, gear_pressure_angle)) + 1;
+    bore_depth = shaft_len - face_gap + bore_extra_depth;
+    relief_h = max(0, vm_motor_boss_h - face_gap) + 0.3;
 
-    assert(clamp_offset + screw_d / 2 < r,
-        "clamp_offset places the screw outside the hub");
-    assert(clamp_offset - screw_d / 2 > shaft_d / 2 + min_bore_to_clamp,
-        "clamp_offset is too close to the shaft bore");
+    assert(bore_depth < gear_thickness - 1, "Pinion bore breaks through the top");
+    assert(vm_motor_boss_d + boss_relief_extra < mb_gear_root_d(vm_pinion_teeth) - 2,
+        "Motor boss relief too wide for the pinion root");
 
+    // Local z=0 = pinion underside (world vm_gear_z0()).
     diff() {
-        union() {
-            cyl(d = hub_d, h = hub_h, anchor = BOTTOM);
-
-            up(hub_h + gear_thickness / 2)
-                mb_herringbone_gear(
-                    teeth = pinion_teeth,
-                    thickness = gear_thickness,
-                    mod = gear_mod,
-                    helical = gear_helical,
-                    backlash = gear_backlash,
-                    pressure_angle = gear_pressure_angle,
-                    shaft_diam = 0,
-                    slices = gear_slices
-                );
-        }
+        up(gear_thickness / 2)
+            mb_helical_gear(
+                teeth = vm_pinion_teeth,
+                helical = vm_pinion_helical(),
+                thickness = gear_thickness
+            );
 
         tag("remove") {
-            down(eps / 2)
-                cyl(d = shaft_d, h = total_h + eps, anchor = BOTTOM);
-
-            down(eps / 2)
-                left(eps)
-                    cuboid(
-                        [slit_d / 2 + eps, slit_width, total_h + eps],
-                        anchor = LEFT + BOTTOM
-                    );
-
-            up(hub_h / 2)
-                right(clamp_offset)
-                    screw_hole(
-                        clamp_screw,
-                        l = clamp_hole_l,
-                        teardrop = teardrop_clamp_hole,
-                        orient = FWD
-                    )
-                        position(BOT)
-                            nut_trap_inline(
-                                l = nut_trap_depth + eps,
-                                spec = clamp_screw,
-                                anchor = BOT
-                            );
+            down(eps)
+                cyl(d = shaft_d, h = bore_depth + eps, anchor = BOTTOM, chamfer1 = -0.3);
+            down(eps)
+                cyl(d = vm_motor_boss_d + boss_relief_extra, h = relief_h + eps, anchor = BOTTOM);
         }
     }
 }

@@ -1,6 +1,8 @@
-// Dual-motor base: bottom 608 only, plastic shaft through coils (see driven-shaft.scad).
-// Column tops take M3 heat-set inserts for the TX deck bolts.
+// Dual-motor base: bottom 608 on an M8 stud, crush-rib motor wells, insert columns, box (+X).
+// Column tops take M3 heat-set inserts (with locating spigots) for the TX deck bolts.
 // Printed skirt under the floor clears the M8 SHCS head so the base sits flush/stable.
+// Motors press into the wells from above (no collets, no clamp screws); their terminals
+// and wires drop through the well ledge into the skirt and run to the box floor slots.
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
 include <BOSL2/gears.scad>
@@ -9,17 +11,17 @@ include <motor-base-common.scad>
 
 
 /* [Base-only] */
-wire_slot_w = 4; // [2:0.5:10]
+wire_slot_w = 8; // [2:0.5:10]
 ear_w = 12; // [8:0.5:20]
 ear_stick = 8; // [4:0.5:16]
 switch_cutout_d = 12.4; // [8:0.1:40]
 switch_body_depth = 30; // [10:0.5:40]
 cable_hole_d = 8; // [4:0.5:16]
 mount_screw = "M3";
-lid_screw = "M3";
-post_d = 8; // [6:0.5:14]
-nut_trap_depth = 2.7; // [2:0.1:8]
 teardrop_holes = true; // [true, false]
+// Notch at the top of the box wall facing the deck (TX coil + IR emitter leads).
+deck_wire_notch_w = 12; // [6:0.5:30]
+deck_wire_notch_h = 8; // [3:0.5:20]
 
 
 /* [Hidden] */
@@ -30,20 +32,9 @@ cut_overlap = 0.2;
 
 
 module motor_base(
-    motor_d = vm_motor_d,
-    motor_h = vm_motor_h,
-    collet_wall = vm_collet_wall,
-    collet_flange_od = vm_collet_flange_od,
-    collet_flange_h = vm_collet_flange_h,
-    flange_bolt_r = vm_flange_bolt_r,
-    flange_bolt_count = vm_flange_bolt_count,
-    key_w = vm_key_w,
-    key_d = vm_key_d,
     wire_slot_w = wire_slot_w,
-    pocket_slop = vm_pocket_slop,
     floor_h = vm_floor_h,
     wall_t = vm_wall_t,
-    deck_margin = vm_deck_margin,
     porch_inner_x = vm_porch_inner_x,
     porch_inner_y = vm_porch_inner_y,
     porch_inner_z = vm_porch_inner_z,
@@ -53,56 +44,44 @@ module motor_base(
     switch_body_depth = switch_body_depth,
     cable_hole_d = cable_hole_d,
     mount_screw = mount_screw,
-    lid_screw = lid_screw,
-    post_d = post_d,
-    nut_trap_depth = nut_trap_depth,
+    post_d = vm_post_d,
     teardrop_holes = teardrop_holes,
     skirt_h = vm_skirt_h,
     skirt_wall = vm_skirt_wall
 ) {
     eps = cut_overlap;
-    collet_od = mb_collet_od(motor_d, collet_wall);
-    well_d = collet_od + 2 * pocket_slop;
-    bolt_angles = mb_flange_bolt_angles(flange_bolt_count);
-
     motor_y = mb_gear_center_dist();
-    driven_od = mb_gear_outer_d(vm_driven_teeth);
-    pinion_od = mb_gear_outer_d(vm_pinion_teeth);
     bearing_h = mb_bearing_h();
     bearing_pocket_d = mb_bearing_pocket_d();
-    shaft_clear = mb_shaft_clear_d();
+    boss_d = mb_bearing_boss_d();
+    well_bore_d = mb_well_bore_d();
+    well_od = mb_well_od();
 
-    gear_z0 = vm_gear_z0();
     bot_bearing_z0 = vm_bot_bearing_z0();
     bot_bearing_z1 = vm_bot_bearing_z1();
     col_top_z = vm_col_top_z();
+    motor_z0 = vm_motor_z0();
+    well_floor_z = vm_well_floor_z();
+    well_rim_z = vm_well_rim_z();
 
-    layout = mb_layout(
-        motor_y, motor_d, collet_flange_od, driven_od, pinion_od,
-        vm_ring_od, bearing_pocket_d, deck_margin, wall_t
-    );
+    layout = mb_layout();
     deck_half_x = mb_layout_get(layout, "deck_half_x");
     deck_half_y = mb_layout_get(layout, "deck_half_y");
     col_d = mb_layout_get(layout, "col_d");
     col_coords = mb_layout_get(layout, "col_coords");
-    cavity_half_x = mb_layout_get(layout, "cavity_half_x");
-    cavity_half_y = mb_layout_get(layout, "cavity_half_y");
     deck_x = 2 * deck_half_x;
     deck_y = 2 * deck_half_y;
 
-    porch_x0 = deck_half_x - wall_t;
-    porch_outer_x = porch_inner_x + 2 * wall_t;
-    porch_outer_y = porch_inner_y + 2 * wall_t;
+    // Box sits vm_porch_gap beyond the deck edge; a floor bridge joins them.
+    porch_x0 = mb_porch_x0(layout);
+    porch_outer_x = mb_porch_outer_x();
+    porch_outer_y = mb_porch_outer_y();
     porch_x1 = porch_x0 + porch_outer_x;
     porch_h = floor_h + porch_inner_z;
+    bridge_x0 = deck_half_x - 8;
+    bridge_len = porch_x0 - bridge_x0 + 1;
 
-    post_inset = wall_t + post_d / 2 + 1;
-    post_coords = [
-        [porch_x0 + post_inset,  porch_inner_y / 2 - post_d / 2 - 1],
-        [porch_x0 + post_inset, -(porch_inner_y / 2 - post_d / 2 - 1)],
-        [porch_x1 - post_inset,  porch_inner_y / 2 - post_d / 2 - 1],
-        [porch_x1 - post_inset, -(porch_inner_y / 2 - post_d / 2 - 1)]
-    ];
+    post_coords = mb_post_coords(layout, post_d);
     motor_ys = [motor_y, -motor_y];
     ear_pts = [
         [-deck_half_x,  deck_half_y - ear_w / 2 - 2],
@@ -110,14 +89,10 @@ module motor_base(
         [porch_x1,  porch_outer_y / 2 - ear_w / 2],
         [porch_x1, -(porch_outer_y / 2 - ear_w / 2)]
     ];
+    rib_len = well_bore_d / 2 - mb_rib_inner_r() + 0.3;
 
-    vm_assert_coil_gap_metal_free();
-    assert(floor_h > collet_flange_h, "floor_h must exceed collet_flange_h");
+    vm_assert_layout();
     assert(porch_inner_x > switch_body_depth + 5, "porch too shallow for switch");
-    assert(
-        motor_y - motor_d / 2 > (bearing_pocket_d + 2 * wall_t) / 2 + 0.5,
-        "motor can intersects bottom bearing boss"
-    );
     assert(skirt_h > 0, "skirt_h must be positive for flush underside");
 
     diff() {
@@ -129,20 +104,38 @@ module motor_base(
                 edges = "Z"
             );
 
+            // Floor bridge across the deck ↔ box gap.
+            right(bridge_x0)
+                cuboid([bridge_len, porch_outer_y, floor_h], anchor = LEFT + BOTTOM);
+
+            // Columns + locating spigots (deck recesses: diagonal pair tight).
             for (c = col_coords)
-                translate([c.x, c.y, floor_h - eps])
+                translate([c.x, c.y, floor_h - eps]) {
                     cyl(
                         d = col_d,
                         h = col_top_z - floor_h + eps,
                         anchor = BOTTOM
                     );
+                    up(col_top_z - floor_h + eps - 0.01)
+                        cyl(
+                            d = vm_locate_d,
+                            h = vm_locate_h,
+                            anchor = BOTTOM,
+                            chamfer2 = 0.4
+                        );
+                }
 
-            // Bottom 608 boss up to shaft seat.
+            // Bottom 608 boss up to the bearing top.
             cyl(
-                d = bearing_pocket_d + 2 * wall_t,
+                d = boss_d,
                 h = bot_bearing_z1,
                 anchor = BOTTOM
             );
+
+            // Motor well tubes: ledge in the skirt, rim below the gear plane.
+            for (my = motor_ys)
+                translate([0, my, well_floor_z])
+                    cyl(d = well_od, h = well_rim_z - well_floor_z, anchor = BOTTOM);
 
             right(porch_x0)
                 cuboid(
@@ -173,6 +166,8 @@ module motor_base(
                     rounding = 6,
                     edges = "Z"
                 );
+                right(bridge_x0)
+                    cuboid([bridge_len, porch_outer_y, skirt_h], anchor = LEFT + BOTTOM);
                 right(porch_x0)
                     cuboid(
                         [porch_outer_x, porch_outer_y, skirt_h],
@@ -194,39 +189,35 @@ module motor_base(
         tag("remove") {
             for (my = motor_ys) {
                 back(my) {
-                    down(eps / 2)
-                        linear_extrude(height = collet_flange_h + eps)
-                            offset(delta = pocket_slop)
-                                mb_flange_profile(collet_flange_od, key_w, key_d);
-
-                    down(eps / 2)
-                        cyl(d = well_d, h = motor_h + eps, anchor = BOTTOM);
-
-                    for (a = bolt_angles)
-                        zrot(a)
-                            right(flange_bolt_r)
-                                down(eps / 2)
-                                    screw_hole(
-                                        mount_screw,
-                                        l = floor_h + eps,
-                                        teardrop = teardrop_holes,
-                                        anchor = BOTTOM,
-                                        orient = UP
-                                    );
-
-                    up(collet_flange_h / 2)
-                        right(well_d / 4)
-                            cuboid(
-                                [
-                                    porch_x0 + wall_t + 4 - well_d / 4,
-                                    wire_slot_w + 2 * pocket_slop,
-                                    collet_flange_h + 1
-                                ],
-                                anchor = LEFT + CENTER
-                            );
+                    // Smooth bore minus crush ribs; ribs stop below the lead-in.
+                    up(motor_z0)
+                        difference() {
+                            cyl(d = well_bore_d, h = well_rim_z - motor_z0 + eps, anchor = BOTTOM);
+                            for (i = [0:vm_well_rib_n - 1])
+                                zrot(i * 360 / vm_well_rib_n + 30)
+                                    right(mb_rib_inner_r())
+                                        down(eps)
+                                            cuboid(
+                                                [rib_len, vm_well_rib_w, well_rim_z - motor_z0 - vm_well_leadin - 0.5 + eps],
+                                                anchor = LEFT + BOTTOM,
+                                                chamfer = 0.5,
+                                                edges = [TOP + LEFT]
+                                            );
+                        }
+                    up(well_rim_z - vm_well_leadin)
+                        cyl(
+                            d1 = well_bore_d,
+                            d2 = well_bore_d + 2 * vm_well_leadin + 2 * eps,
+                            h = vm_well_leadin + eps,
+                            anchor = BOTTOM
+                        );
+                    // Terminals + wires through the ledge into the skirt.
+                    up(well_floor_z - eps)
+                        cyl(d = vm_motor_term_hole_d, h = motor_z0 - well_floor_z + 3 * eps, anchor = BOTTOM);
                 }
             }
 
+            // Motor wires come up from the skirt into the box.
             for (my = motor_ys)
                 down(eps / 2)
                     right(porch_x0 + wall_t + 3)
@@ -236,28 +227,12 @@ module motor_base(
                                 anchor = BOTTOM
                             );
 
-            // Gear cavity (open ±Y for pinion mesh).
-            up(bot_bearing_z1 - 0.5)
-                cuboid(
-                    [
-                        2 * cavity_half_x,
-                        2 * cavity_half_y,
-                        vm_gear_thickness + vm_driven_hub_h + 1.2
-                    ],
-                    anchor = BOTTOM,
-                    rounding = 2,
-                    edges = "Z"
-                );
-
             // 608 OD pocket. Outer race sits on the z=0 annulus outside bearing_lip_id.
             up(bot_bearing_z0)
                 cyl(d = bearing_pocket_d, h = bearing_h + eps, anchor = BOTTOM);
 
-            // Journal clearance through the bearing ID.
-            down(eps / 2)
-                cyl(d = shaft_clear, h = bot_bearing_z1 + eps, anchor = BOTTOM);
-
-            // Skirt hollow (leave a solid core under the 608 boss for the OD lip).
+            // Skirt hollow (leave a solid core under the 608 boss for the OD lip,
+            // and keep the motor well tubes down to their ledges).
             down(skirt_h + eps / 2) {
                 difference() {
                     union() {
@@ -271,6 +246,11 @@ module motor_base(
                             rounding = 4,
                             edges = "Z"
                         );
+                        right(bridge_x0)
+                            cuboid(
+                                [bridge_len + skirt_wall + 1, porch_outer_y - 2 * skirt_wall, skirt_h + eps],
+                                anchor = LEFT + BOTTOM
+                            );
                         right(porch_x0 + skirt_wall)
                             cuboid(
                                 [
@@ -283,13 +263,16 @@ module motor_base(
                     }
                     // Protected core = boss footprint; lip annulus survives around lip_id.
                     cyl(
-                        d = bearing_pocket_d + 2 * wall_t,
+                        d = boss_d,
                         h = skirt_h + 2 * eps,
                         anchor = BOTTOM
                     );
+                    for (my = motor_ys)
+                        translate([0, my, skirt_h + well_floor_z])
+                            cyl(d = well_od, h = -well_floor_z + eps, anchor = BOTTOM);
                 }
 
-                // Through the lip: washer seats up against the 608 inner race.
+                // Through the lip: lower race spacer seats up against the 608 inner race.
                 cyl(
                     d = vm_bearing_lip_id,
                     h = skirt_h + eps,
@@ -303,15 +286,15 @@ module motor_base(
                     anchor = BOTTOM
                 );
             }
+            // The terminal holes must reopen through the protected tubes.
+            for (my = motor_ys)
+                translate([0, my, well_floor_z - eps])
+                    cyl(d = vm_motor_term_hole_d, h = motor_z0 - well_floor_z + 3 * eps, anchor = BOTTOM);
 
-            // M3 heat-set insert pilots in column tops (not threads in plastic).
+            // M3 heat-set insert pilots in column tops (through the spigots).
             for (c = col_coords)
-                translate([c.x, c.y, col_top_z + eps])
-                    cyl(
-                        d = vm_insert_hole_d + 2 * $slop,
-                        h = vm_insert_depth + eps,
-                        anchor = TOP
-                    );
+                translate([c.x, c.y, col_top_z + vm_locate_h])
+                    mb_insert_pilot(vm_insert_len_col, eps);
 
             up(floor_h)
                 difference() {
@@ -325,20 +308,30 @@ module motor_base(
                             cyl(d = post_d + 0.2, h = porch_inner_z + 3 * eps, anchor = BOTTOM);
                 }
 
+            // Low window in the box wall facing the deck (wires over the floor).
             up(floor_h)
-                right(deck_half_x - wall_t - eps)
+                right(porch_x0 - eps)
                     cuboid(
-                        [wall_t + 4, max(wire_slot_w + 16, 20), min(porch_inner_z, motor_h) + eps],
+                        [wall_t + 4, max(wire_slot_w + 16, 20), min(porch_inner_z, vm_motor_h) + eps],
                         anchor = LEFT + BOTTOM
                     );
+
+            // Top notch in the same wall for the TX coil + IR emitter leads (under the lid).
+            up(porch_h - deck_wire_notch_h)
+                right(porch_x0 - eps)
+                    back(vm_tx_wire_y / 2)
+                        cuboid(
+                            [wall_t + 2 * eps, deck_wire_notch_w, deck_wire_notch_h + eps],
+                            anchor = LEFT + BOTTOM
+                        );
 
             up(floor_h + porch_inner_z / 3)
                 right(porch_x1)
                     cyl(
                         d = switch_cutout_d,
                         h = wall_t + 10,
-                        orient = RIGHT,
-                    );
+                        orient = RIGHT
+);
 
             up(floor_h + porch_inner_z / 2)
                 right(porch_x0 + wall_t + porch_inner_x / 2)
@@ -350,22 +343,10 @@ module motor_base(
                             orient = BACK
                         );
 
-            for (p = post_coords) {
-                translate([p.x, p.y, floor_h - eps])
-                    screw_hole(
-                        lid_screw,
-                        l = porch_inner_z + 2 * eps,
-                        teardrop = teardrop_holes,
-                        anchor = BOTTOM,
-                        orient = UP
-                    )
-                        position(BOT)
-                            nut_trap_inline(
-                                l = nut_trap_depth + eps,
-                                spec = lid_screw,
-                                anchor = BOT
-                            );
-            }
+            // Lid posts: M3 heat-set inserts from the top (screws go down through the lid).
+            for (p = post_coords)
+                translate([p.x, p.y, vm_porch_top_z()])
+                    mb_insert_pilot(vm_insert_len_col, eps);
 
             // Optional bench-mount holes through floor + skirt.
             for (p = ear_pts) {

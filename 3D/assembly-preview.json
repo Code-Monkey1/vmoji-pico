@@ -1,0 +1,19 @@
+{
+    "fileFormatVersion": "1",
+    "parameterSets": {
+        "New set 1": {
+            "explode": "0",
+            "show_base": "true",
+            "show_bearing": "true",
+            "show_coils": "true",
+            "show_collar": "true",
+            "show_display": "false",
+            "show_gears": "false",
+            "show_journal": "false",
+            "show_lid": "false",
+            "show_motors": "true",
+            "show_shaft": "false",
+            "show_tx_deck": "true"
+        }
+    }
+}
