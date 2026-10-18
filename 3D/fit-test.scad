@@ -12,8 +12,8 @@ include <motor-base-common.scad>
 /* [Coupon] */
 coupon = "all"; // [all, motor_shaft, journal, bearing_od, nut_socket, tip_bore, key, well, insert, locate, ir]
 motor_shaft_bores = [1.70, 1.75, 1.80, 1.85, 1.90, 1.95, 2.00];
-journal_ds = [7.85, 7.90, 7.95, 8.00, 8.05];
-bearing_fits = [0.05, 0.15, 0.25];
+journal_ds = [8.10, 8.15, 8.20, 8.25];
+bearing_fits = [-0.05, 0.0, 0.05];
 nut_socket_extras = [0.2, 0.4, 0.6];
 tip_bore_extras = [0.05, 0.15, 0.25, 0.35];
 key_fits = [0.15, 0.25, 0.35];
@@ -65,13 +65,18 @@ module coupon_motor_shaft() {
 }
 
 module coupon_journal() {
+    // Separate pieces with room around each peg for a 608; label engraved (mirrored) in the
+    // bottom face, since the seated bearing covers the top.
     for (i = [0:len(journal_ds) - 1])
-        right((i - (len(journal_ds) - 1) / 2) * 14) {
+        right((i - (len(journal_ds) - 1) / 2) * 28) {
             difference() {
-                cuboid([14, 18, 2], anchor = BOTTOM, rounding = 1, edges = "Z");
-                up(2) fwd(6) _label(_fmt(journal_ds[i]), 2.2);
+                cuboid([24, 24, 2], anchor = BOTTOM, rounding = 1, edges = "Z");
+                down(eps)
+                    linear_extrude(0.6 + eps)
+                        mirror([1, 0, 0])
+                            text(_fmt(journal_ds[i]), size = 4, halign = "center", valign = "center");
             }
-            up(2 - 0.01) back(2) cyl(d = journal_ds[i], h = vm_bearing_h + 1, anchor = BOTTOM, chamfer2 = 0.15);
+            up(2 - 0.01) cyl(d = journal_ds[i], h = vm_bearing_h + 1, anchor = BOTTOM, chamfer2 = 0.15);
         }
 }
 

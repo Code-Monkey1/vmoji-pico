@@ -26,6 +26,9 @@ vm_assert_layout();
 module _motors_check()
     for (my = asm_motor_ys())
         asm_motor(my, d = 2 * mb_rib_inner_r() - 0.05, shaft_d = vm_motor_shaft_d - 0.05);
+// Top 608 ghost bore just over the journal: the journal is drawn above Ø8 on purpose (the printer
+// makes outer diameters undersize; tuned with the journal coupon), everything else must clear.
+module _top_bearing_check() asm_bearing_top(id = max(vm_bearing_id, vm_top_journal_d + 0.05));
 module _pinions_env() for (my = asm_motor_ys()) back(my) mb_pinion_envelope();
 module _rotor_env() { mb_rotor_shaft_envelope(); mb_rotor_head_envelope(); asm_display_envelope(); }
 
@@ -56,7 +59,7 @@ module run_check(name) {
     else if (name == "motors_pinions") intersection() { _motors_check(); for (my = asm_motor_ys()) asm_pinion(my); }
     else if (name == "bearings_base") intersection() { asm_base(); asm_bearing_bottom(); }
     else if (name == "bearings_deck") intersection() { asm_deck(); asm_bearing_top(); }
-    else if (name == "bearings_rotor") intersection() { asm_rotor_shaft(); union() { asm_bearing_bottom(); asm_bearing_top(); } }
+    else if (name == "bearings_rotor") intersection() { asm_rotor_shaft(); union() { asm_bearing_bottom(); _top_bearing_check(); } }
     else if (name == "stud_rotor") intersection() { asm_rotor_shaft(); asm_stud(); }
     else if (name == "stud_base") intersection() { asm_base(); asm_stud(); }
     else if (name == "stud_deck") intersection() { asm_deck(); asm_stud(); }

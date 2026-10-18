@@ -126,16 +126,16 @@ Print `fit-test.scad`, try each coupon on the real part, then copy the winner he
 
 | Param | Default | Coupon | Role |
 |-------|---------|--------|------|
-| `vm_motor_shaft_d` | 1.9 | `motor_shaft` | Pinion press bore on the Ø2 shaft (proven; change only if needed). |
-| `vm_top_journal_d` | 7.95 | `journal` | Journal: snug slide into the top 608 inner race. |
-| `vm_bearing_fit` | 0.15 | `bearing_od` | 608 OD pockets (plus `$slop`). |
-| `vm_nut_socket_extra` | 0.4 | `nut_socket` | Hex socket over the M8 nut (loose: drive only). |
-| `vm_tip_bore_extra` | 0.15 | `tip_bore` | Snug bore on the M8 tip (this centers the rotor). |
-| `vm_key_fit` | 0.25 | `key` | Head socket on the double-D key. |
+| `vm_motor_shaft_d` / `vm_motor_shaft_lead_d` | 1.96 / 2.00 | `motor_shaft` | Stepped pinion bore on the Ø2 shaft: 2.00 lead-in on the motor side, 1.96 grip above. Press with a vise, not a mallet. |
+| `vm_top_journal_d` | 8.10 | `journal` | Journal: snug slide into the top 608 inner race. Must slide on by hand (a press fit fights the deck spigots). Loose: one wrap of tape; tight: sand it with the rotor spinning in a drill. |
+| `vm_bearing_fit` | 0.00 | `bearing_od` | 608 OD pockets (plus `$slop`). Still loose: tape the outer race. |
+| `vm_nut_socket_extra` | 0.3 | `nut_socket` | Hex socket over the M8 nut (loose: drive only). |
+| `vm_tip_bore_extra` | 0.07 | `tip_bore` | Snug bore on the M8 tip (this centers the rotor). |
+| `vm_key_fit` | 0.17 | `key` | Head socket on the double-D key. |
 | `vm_well_rib_interf` | 0.15 | `well` | Crush-rib grip on the motor can. |
-| `vm_insert_hole_d` | 4.0 | `insert` | Heat-set pilot (plus `$slop`). |
+| `vm_insert_hole_d` | 3.9 | `insert` | Heat-set pilot (plus `$slop`). |
 | `vm_locate_fit` / `vm_locate_loose` | 0.15 / 0.8 | `locate` | Deck recesses on the column spigots (diagonal pair tight). |
-| `vm_ir_hole_extra` | 0.3 | `ir` | IR LED / phototransistor holes. |
+| `vm_ir_hole_extra` | 0.2 | `ir` | IR LED / phototransistor holes. |
 | `$slop` | 0.2 | — | Global print clearance (clearance holes). |
 
 The display ghost in the preview (60×40 PCB + 8×8 matrix) is approximate; the swept

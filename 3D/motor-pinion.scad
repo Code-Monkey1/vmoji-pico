@@ -1,4 +1,6 @@
-// Motor pinion — single helical, plain press-fit on the Ø2 motor shaft (no slit clamp).
+// Motor pinion — single helical, stepped press-fit on the Ø2 motor shaft (no slit clamp):
+// Ø vm_motor_shaft_lead_d lead-in on the motor side keeps the pinion straight while it starts,
+// Ø vm_motor_shaft_d grips the upper half of the shaft engagement.
 // Blind bore: the shaft is only ~4–5 mm long; the gear sits vm_pinion_face_gap above the
 // motor face (press down onto a shim of that thickness). Underside relieved for the motor
 // boss. Print underside down. If a pinion ever slips, a drop of CA glue fixes it.
@@ -24,6 +26,7 @@ cut_overlap = 0.2;
 
 module motor_pinion(
     shaft_d = vm_motor_shaft_d,
+    lead_d = vm_motor_shaft_lead_d,
     shaft_len = vm_motor_shaft_len,
     face_gap = vm_pinion_face_gap,
     gear_thickness = vm_gear_thickness,
@@ -33,10 +36,15 @@ module motor_pinion(
     eps = cut_overlap;
     bore_depth = shaft_len - face_gap + bore_extra_depth;
     relief_h = max(0, vm_motor_boss_h - face_gap) + 0.3;
+    // Shaft engages from the top of the boss relief to its tip; the step sits halfway.
+    shaft_tip = shaft_len - face_gap;
+    step_z = (relief_h + shaft_tip) / 2;
 
     assert(bore_depth < gear_thickness - 1, "Pinion bore breaks through the top");
     assert(vm_motor_boss_d + boss_relief_extra < mb_gear_root_d(vm_pinion_teeth) - 2,
         "Motor boss relief too wide for the pinion root");
+    assert(lead_d >= shaft_d, "Pinion lead-in must not be tighter than the grip");
+    assert(shaft_tip - step_z >= 1.5, "Pinion grip section too short on the shaft");
 
     // Local z=0 = pinion underside (world vm_gear_z0()).
     diff() {
@@ -49,7 +57,9 @@ module motor_pinion(
 
         tag("remove") {
             down(eps)
-                cyl(d = shaft_d, h = bore_depth + eps, anchor = BOTTOM, chamfer1 = -0.3);
+                cyl(d = lead_d, h = step_z + eps, anchor = BOTTOM, chamfer1 = -0.3);
+            up(step_z - eps / 2)
+                cyl(d = shaft_d, h = bore_depth - step_z + eps / 2, anchor = BOTTOM);
             down(eps)
                 cyl(d = vm_motor_boss_d + boss_relief_extra, h = relief_h + eps, anchor = BOTTOM);
         }

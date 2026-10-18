@@ -20,7 +20,11 @@
 /* ---- Motor (RF-300C-class) ---- */
 vm_motor_d = 24;
 vm_motor_h = 12;
-vm_motor_shaft_d = 1.9; // Proven pinion press-fit bore on the Ø2.0 shaft; do not change casually.
+// Stepped pinion press-fit bore on the Ø2.0 shaft (coupon-tuned): lead-in on the motor side
+// for alignment, tighter grip toward the blind end. A plain 1.90 needed a mallet; 2.00 alone was
+// "somewhat tight". Do not change casually.
+vm_motor_shaft_d = 1.96; // Grip section (upper half of the engagement).
+vm_motor_shaft_lead_d = 2.00; // Lead-in section (motor side).
 vm_motor_shaft_len = 4.5; // Shaft length above the motor face (measured 4–5 mm).
 // Front bearing boss on the motor face; the pinion underside is relieved around it.
 vm_motor_boss_d = 7;
@@ -62,7 +66,7 @@ function vm_pinion_helical() = -vm_driven_helical();
 vm_bearing_id = 8;
 vm_bearing_od = 22;
 vm_bearing_h = 7;
-vm_bearing_fit = 0.15;
+vm_bearing_fit = 0.00; // Coupon: 0.05 still loose. If 0.00 is loose too, tape the outer race.
 vm_bearing_inner_race_od = 12; // Nothing clamped/rotating may touch the shields outside this.
 // OD lip at z=0: outer race sits on the annulus; spacer + head pass through the hole.
 vm_bearing_lip_id = 16.8;
@@ -91,17 +95,20 @@ vm_skirt_wall = 3;
 
 /* ---- Rotor shaft (plastic, integrated driven gear) ---- */
 vm_rotor_bottom_gap = 0.5; // Rotor underside above the upper race spacer.
-vm_nut_socket_extra = 0.4; // Across-flats clearance: hex only drives, it does not center.
-vm_tip_bore_extra = 0.15; // Snug bore on the M8 tip crest: this centers the rotor.
+vm_nut_socket_extra = 0.3; // Across-flats clearance: hex only drives, it does not center.
+vm_tip_bore_extra = 0.07; // Snug bore on the M8 tip crest: this centers the rotor.
 vm_tip_bore_headroom = 0.5; // Above the screw tip.
 vm_rotor_collar_d = 11; // Shoulder above the gear; < inner race OD so it never touches shields.
 vm_rotor_collar_gap = 0.5; // Collar top → top 608 inner race (rotor captive, not over-constrained).
-vm_top_journal_d = 7.95; // Snug slide into the top 608 inner race (tune with fit-test.scad).
+// Snug slide into the top 608 inner race (tune with fit-test.scad). Must slide on by hand: a press
+// fit pushes the race through the balls and over-constrains the rotor against the deck spigots.
+// Coupon: 8.05 slides with slight wobble.
+vm_top_journal_d = 8.10;
 vm_rotor_shaft_d = 7.7; // Above the journal: lets the top 608 slide down freely.
 // Double-D key at the shaft top for the rotor head (plus one center M3 self-tapped).
 vm_key_flat = 6.2; // Across flats.
 vm_key_len = 7; // Socket depth in the head.
-vm_key_fit = 0.25; // Diametral clearance of the head socket on the key.
+vm_key_fit = 0.17; // Diametral clearance of the head socket on the key.
 vm_center_pilot_d = 2.5; // M3 self-tap pilot in the shaft top.
 vm_center_pilot_depth = 10;
 
@@ -160,7 +167,7 @@ vm_ir_d = 5; // [3, 5]
 vm_ir_flange_d = 5.8; // 3 mm parts: ~3.8
 vm_ir_flange_h = 1;
 vm_ir_len = 8.6; // Flange bottom → dome tip. 3 mm parts: ~5.3
-vm_ir_hole_extra = 0.3;
+vm_ir_hole_extra = 0.2;
 vm_ir_r = 27;
 vm_ir_angle = 0;
 vm_ir_tx_protrude = 1.5; // Emitter dome above the deck top.
@@ -182,7 +189,7 @@ vm_col_d = 12;
 /* ---- Heat-set inserts (M3, Ø4.2) ---- */
 // Brass inserts want metal M3 screws. Pilot = vm_insert_hole_d + 2*$slop (proven with yours).
 vm_insert_od = 4.2;
-vm_insert_hole_d = 4.0;
+vm_insert_hole_d = 3.9; // Coupon: 4.0 slightly loose; the iron should have to push the insert.
 vm_insert_len_col = 6; // Column tops and lid posts.
 vm_insert_len_head = 4; // Rotor head PCB bosses.
 vm_insert_depth_extra = 1; // Pilot deeper than the insert.

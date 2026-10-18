@@ -37,15 +37,15 @@ module asm_pinion(my, a = 0) {
 module asm_rotor_shaft(a = 0) up(vm_rotor_z0()) zrot(a) rotor_shaft();
 module asm_head(a = 0) up(vm_head_z()) zrot(a) rotor_head();
 
-module asm_bearing(z0) {
+module asm_bearing(z0, id = vm_bearing_id) {
     up(z0)
         difference() {
             cyl(d = vm_bearing_od, h = vm_bearing_h, anchor = BOTTOM);
-            down(0.1) cyl(d = vm_bearing_id, h = vm_bearing_h + 0.2, anchor = BOTTOM);
+            down(0.1) cyl(d = id, h = vm_bearing_h + 0.2, anchor = BOTTOM);
         }
 }
 module asm_bearing_bottom() asm_bearing(vm_bot_bearing_z0());
-module asm_bearing_top() asm_bearing(vm_top_bearing_z0());
+module asm_bearing_top(id = vm_bearing_id) asm_bearing(vm_top_bearing_z0(), id);
 
 // M8x25 SHCS + 2 race spacers + M8 nut; turns with the bottom inner race and the rotor.
 module asm_stud(a = 0) {
