@@ -148,12 +148,12 @@ vm_cw_depth = 2.5;
 vm_cw_fit = 0.3;
 
 /* ---- Spinning display / PCB ---- */
-// 40x60 mm proto board, 4x M3 corner holes. Hole rectangle is a placeholder: measure yours.
+// 40x60 mm proto board, 4x M3 corner holes. Hole rectangle was measured with a ruler.
 vm_display_pcb_x = 60;
 vm_display_pcb_y = 40;
 vm_display_pcb_t = 1.6;
-vm_pcb_hole_dx = 52;
-vm_pcb_hole_dy = 32;
+vm_pcb_hole_dx = 53.7;
+vm_pcb_hole_dy = 34;
 vm_pcb_corner_r = 2;
 vm_led_n = 8;
 vm_led_pitch = 4; // 8×4 = 32 mm square matrix, standing in Z

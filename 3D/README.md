@@ -27,7 +27,7 @@ print file includes that before `motor-base-common.scad`.
 | 0–6 | M3 nuts | Counterweights (glued into the head pockets). |
 | 2 | RF-300C-class motors | Ø24 × 12, Ø2.0 shaft sticking out 4–5 mm (`vm_motor_shaft_len`). |
 | 1 | IR LED + 1 phototransistor | 5 mm by default (`vm_ir_d`, `vm_ir_flange_d`, `vm_ir_len` for 3 mm parts). |
-| 1 | 40 × 60 mm proto PCB | 4 M3 corner holes; set `vm_pcb_hole_dx/dy` to your board (placeholder 52 × 32). |
+| 1 | 40 × 60 mm proto PCB | 4 M3 corner holes; set `vm_pcb_hole_dx/dy` to your board. |
 
 **Buy the stud screw:** [M8 hex-socket assortment (16/20/25/30)](https://www.amazon.ca/gp/product/B0GPXBPR31).
 Use a **25 mm** screw: its tip sticks ~8 mm above the nut and centers the rotor.
