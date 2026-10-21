@@ -52,6 +52,21 @@ function mb_well_bore_d() = vm_motor_d + 2 * vm_well_clear;
 function mb_well_od() = mb_well_bore_d() + 2 * vm_well_wall;
 function mb_rib_inner_r() = vm_motor_d / 2 - vm_well_rib_interf;
 
+// Crush ribs to subtract from the smooth well bore (base and fit coupon share this).
+// Trapezoid section: vm_well_rib_tip_w on the can, vm_well_rib_w at the bore wall, so the tip
+// crushes easily. The tip stops 0.5 below the top, which slopes the rib top into a lead-in.
+module mb_well_ribs(h, interf = vm_well_rib_interf) {
+    wall_r = mb_well_bore_d() / 2;
+    for (i = [0:vm_well_rib_n - 1])
+        zrot(i * 360 / vm_well_rib_n + 30)
+            hull() {
+                right(vm_motor_d / 2 - interf)
+                    cuboid([0.01, vm_well_rib_tip_w, h - 0.5], anchor = LEFT + BOTTOM);
+                right(wall_r)
+                    cuboid([0.3, vm_well_rib_w, h], anchor = LEFT + BOTTOM);
+            }
+}
+
 /* ---- Gear train (defaults from params) ---- */
 
 function mb_gear_mod() = vm_gear_mod;

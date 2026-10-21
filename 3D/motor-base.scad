@@ -89,7 +89,6 @@ module motor_base(
         [porch_x1,  porch_outer_y / 2 - ear_w / 2],
         [porch_x1, -(porch_outer_y / 2 - ear_w / 2)]
     ];
-    rib_len = well_bore_d / 2 - mb_rib_inner_r() + 0.3;
 
     vm_assert_layout();
     assert(porch_inner_x > switch_body_depth + 5, "porch too shallow for switch");
@@ -193,16 +192,8 @@ module motor_base(
                     up(motor_z0)
                         difference() {
                             cyl(d = well_bore_d, h = well_rim_z - motor_z0 + eps, anchor = BOTTOM);
-                            for (i = [0:vm_well_rib_n - 1])
-                                zrot(i * 360 / vm_well_rib_n + 30)
-                                    right(mb_rib_inner_r())
-                                        down(eps)
-                                            cuboid(
-                                                [rib_len, vm_well_rib_w, well_rim_z - motor_z0 - vm_well_leadin - 0.5 + eps],
-                                                anchor = LEFT + BOTTOM,
-                                                chamfer = 0.5,
-                                                edges = [TOP + LEFT]
-                                            );
+                            down(eps)
+                                mb_well_ribs(well_rim_z - motor_z0 - vm_well_leadin - 0.5 + eps);
                         }
                     up(well_rim_z - vm_well_leadin)
                         cyl(

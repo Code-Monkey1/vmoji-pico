@@ -17,7 +17,7 @@ bearing_fits = [-0.05, 0.0, 0.05];
 nut_socket_extras = [0.2, 0.4, 0.6];
 tip_bore_extras = [0.05, 0.15, 0.25, 0.35];
 key_fits = [0.15, 0.25, 0.35];
-well_interfs = [0.05, 0.15, 0.25];
+well_interfs = [0.0, 0.10, 0.20];
 insert_hole_ds = [3.8, 4.0, 4.2];
 locate_fits = [0.1, 0.15, 0.25, 0.8];
 ir_hole_extras = [0.2, 0.3, 0.4];
@@ -134,8 +134,10 @@ module coupon_key() {
 }
 
 module coupon_well() {
+    // Same depth, ribs and lead-in as the real well (the old 8 mm coupon passed values that
+    // were impossible to press over the full height).
     bore_d = mb_well_bore_d();
-    h = 8;
+    h = vm_motor_h - vm_well_rim_drop;
     for (i = [0:len(well_interfs) - 1])
         right((i - (len(well_interfs) - 1) / 2) * 34)
             difference() {
@@ -143,17 +145,10 @@ module coupon_well() {
                 back(2) down(eps)
                     difference() {
                         cyl(d = bore_d, h = h + 2 * eps, anchor = BOTTOM);
-                        for (k = [0:vm_well_rib_n - 1])
-                            zrot(k * 360 / vm_well_rib_n + 30)
-                                right(vm_motor_d / 2 - well_interfs[i])
-                                    down(eps)
-                                        cuboid(
-                                            [bore_d / 2 - vm_motor_d / 2 + well_interfs[i] + 0.3, vm_well_rib_w, h - vm_well_leadin],
-                                            anchor = LEFT + BOTTOM,
-                                            chamfer = 0.5,
-                                            edges = [TOP + LEFT]
-                                        );
+                        mb_well_ribs(h - vm_well_leadin - 0.5 + eps, well_interfs[i]);
                     }
+                back(2) up(h - vm_well_leadin)
+                    cyl(d1 = bore_d, d2 = bore_d + 2 * vm_well_leadin + 2 * eps, h = vm_well_leadin + eps, anchor = BOTTOM);
                 up(h) fwd(17) _label(_fmt(well_interfs[i]));
             }
 }

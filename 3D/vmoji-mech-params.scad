@@ -22,7 +22,8 @@ vm_motor_d = 24;
 vm_motor_h = 12;
 // Stepped pinion press-fit bore on the Ø2.0 shaft (coupon-tuned): lead-in on the motor side
 // for alignment, tighter grip toward the blind end. A plain 1.90 needed a mallet; 2.00 alone was
-// "somewhat tight". Do not change casually.
+// "somewhat tight". A printed press fit alone does not hold on the smooth shaft: hot-press it
+// (warm the shaft with the iron) and wick in thin CA. Do not change casually.
 vm_motor_shaft_d = 1.96; // Grip section (upper half of the engagement).
 vm_motor_shaft_lead_d = 2.00; // Lead-in section (motor side).
 vm_motor_shaft_len = 4.5; // Shaft length above the motor face (measured 4–5 mm).
@@ -35,8 +36,11 @@ vm_motor_term_hole_d = 18;
 /* ---- Crush-rib press-fit motor wells (no clamp screw) ---- */
 vm_well_clear = 0.3; // Radial clearance between can and smooth bore.
 vm_well_rib_n = 6;
-vm_well_rib_w = 1.2;
-vm_well_rib_interf = 0.15; // Radial interference of each rib tip on the can.
+vm_well_rib_w = 1.2; // Rib root width at the bore wall.
+vm_well_rib_tip_w = 0.6; // Rib tip width on the can: narrow so the tip crushes, not the can.
+// Radial interference of each rib tip on the can. 0.15 passed the 8 mm coupon but the full-height
+// base well was impossible to press (ribs chiselled down); coupon now matches the real well.
+vm_well_rib_interf = 0.10;
 vm_well_wall = 2.5;
 vm_well_ledge_h = 1.5; // Floor ring under the can.
 vm_well_rim_drop = 1.5; // Well rim sits this far below the can top.
@@ -58,8 +62,10 @@ vm_pinion_face_gap = 0.5;
 // Rotor spin: -1 = clockwise viewed from the top, +1 = counter-clockwise.
 // Hands are picked so the helix pushes the rotor UP (well below its weight) and the
 // pinions DOWN toward the motors, which keeps the pinion press-fits seated.
-vm_rotor_dir = -1; // [-1, 1]
-function vm_driven_helical() = vm_rotor_dir * vm_gear_helical;
+// Sign verified on the real build: with the opposite sign, the helix walked the pinions off
+// their shafts within seconds. The printed v2 gears (driven -25°, pinion +25°) match +1.
+vm_rotor_dir = 1; // [-1, 1]
+function vm_driven_helical() = -vm_rotor_dir * vm_gear_helical;
 function vm_pinion_helical() = -vm_driven_helical();
 
 /* ---- 608ZZ (bottom in base + top under TX deck) ---- */
@@ -102,8 +108,8 @@ vm_rotor_collar_d = 11; // Shoulder above the gear; < inner race OD so it never 
 vm_rotor_collar_gap = 0.5; // Collar top → top 608 inner race (rotor captive, not over-constrained).
 // Snug slide into the top 608 inner race (tune with fit-test.scad). Must slide on by hand: a press
 // fit pushes the race through the balls and over-constrains the rotor against the deck spigots.
-// Coupon: 8.05 slides with slight wobble.
-vm_top_journal_d = 8.10;
+// Coupon: 8.05 slides with slight wobble. 8.10 is a press fit.
+vm_top_journal_d = 8.09;
 vm_rotor_shaft_d = 7.7; // Above the journal: lets the top 608 slide down freely.
 // Double-D key at the shaft top for the rotor head (plus one center M3 self-tapped).
 vm_key_flat = 6.2; // Across flats.

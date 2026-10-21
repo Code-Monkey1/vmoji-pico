@@ -51,18 +51,23 @@ Single helical 14T / 28T, m1.25, 25°. Herringbone can't be meshed by dropping t
 helical can (the unpowered pinions turn as the teeth slide in). Mating helical gears need
 **opposite** helix angles (the v1 files used the same sign for both).
 
-`vm_rotor_dir = -1`: the rotor spins **clockwise viewed from the top**, the pinions
-counter-clockwise. The hands are chosen so the pinions are pushed **down** toward the
+`vm_rotor_dir = 1`: the rotor spins **counter-clockwise viewed from the top**, the pinions
+clockwise. The hands are chosen so the pinions are pushed **down** toward the
 motors (keeps the press-fits seated) and the rotor slightly up (far less than its weight).
 If the rotor spins the other way, swap the motor leads (both motors in parallel, same
-polarity). If you'd rather have CCW, set `vm_rotor_dir = 1` and reprint pinions + rotor.
+polarity). In the wrong direction the helix pulls the pinions **off** their shafts within
+seconds (seen on the first build). If you'd rather have CW, set `vm_rotor_dir = -1` and
+reprint pinions + rotor.
 
 ## Material (PLA)
 
 Everything prints in PLA. PLA softens around 55–60 °C and creeps under constant load, so:
 
 - Don't run the motors hot; a warm can slowly loosens the pinion press-fit and crush ribs.
-  If a pinion slips, put a drop of **CA glue** (cyanoacrylate, "super glue") on the shaft and press it back on.
+  The pinions are hot-pressed and glued (assembly step 5); a cold PLA press fit alone does
+  not hold on the smooth Ø2 shaft.
+- Gear noise: printed gears are audible. A thin film of plastic-safe grease (PTFE or silicone,
+  not petroleum) on the teeth quiets them a lot.
 - Keep the TX coil power reasonable; the deck holds the top 608 pocket right under it.
 - Race spacers: 100 % infill. Tighten the M8 stud firmly but don't crank it.
 
@@ -91,8 +96,11 @@ Every step is top-down.
    below, 13 mm wrench above). The stud + nut must now spin freely with the inner race.
 4. **Motors:** solder leads, thread them down through the well ledge hole into the skirt and
    up through the box floor slots. Press each motor into its crush-rib well until it sits on the ledge.
-5. **Pinions:** put a 0.5 mm shim (`vm_pinion_face_gap`, e.g. two business cards) on the motor
-   face and press the pinion down onto it; the ledge takes the force. Remove the shim.
+5. **Pinions (hot press):** put a 0.5 mm shim (`vm_pinion_face_gap`, e.g. two business cards)
+   on the motor face. Warm the shaft with the soldering iron for 3–5 s (touch the shaft only,
+   not the motor face), then press the pinion straight down onto the shim in one motion and
+   hold it until it cools; the ledge takes the force. Remove the shim and wick a drop of thin
+   CA glue into the joint at the pinion's underside.
 6. **Rotor:** lower it onto the stud. The tip enters the centering bore, the hex socket drops
    over the nut (turn slightly), and the helical teeth twist into mesh with the pinions.
 7. **TX deck:** glue the TX coil into the rebate (leads in the groove toward the box), push the
@@ -126,13 +134,13 @@ Print `fit-test.scad`, try each coupon on the real part, then copy the winner he
 
 | Param | Default | Coupon | Role |
 |-------|---------|--------|------|
-| `vm_motor_shaft_d` / `vm_motor_shaft_lead_d` | 1.96 / 2.00 | `motor_shaft` | Stepped pinion bore on the Ø2 shaft: 2.00 lead-in on the motor side, 1.96 grip above. Press with a vise, not a mallet. |
+| `vm_motor_shaft_d` / `vm_motor_shaft_lead_d` | 1.96 / 2.00 | `motor_shaft` | Stepped pinion bore on the Ø2 shaft: 2.00 lead-in on the motor side, 1.96 grip above. Hot-press + CA (assembly step 5); 2.05 alone flew off. |
 | `vm_top_journal_d` | 8.10 | `journal` | Journal: snug slide into the top 608 inner race. Must slide on by hand (a press fit fights the deck spigots). Loose: one wrap of tape; tight: sand it with the rotor spinning in a drill. |
 | `vm_bearing_fit` | 0.00 | `bearing_od` | 608 OD pockets (plus `$slop`). Still loose: tape the outer race. |
 | `vm_nut_socket_extra` | 0.3 | `nut_socket` | Hex socket over the M8 nut (loose: drive only). |
 | `vm_tip_bore_extra` | 0.07 | `tip_bore` | Snug bore on the M8 tip (this centers the rotor). |
 | `vm_key_fit` | 0.17 | `key` | Head socket on the double-D key. |
-| `vm_well_rib_interf` | 0.15 | `well` | Crush-rib grip on the motor can. |
+| `vm_well_rib_interf` | 0.10 | `well` | Crush-rib grip on the motor can (narrow rib tips). 0.15 with flat ribs was impossible to press in the base. The coupon now has the real well depth. |
 | `vm_insert_hole_d` | 3.9 | `insert` | Heat-set pilot (plus `$slop`). |
 | `vm_locate_fit` / `vm_locate_loose` | 0.15 / 0.8 | `locate` | Deck recesses on the column spigots (diagonal pair tight). |
 | `vm_ir_hole_extra` | 0.2 | `ir` | IR LED / phototransistor holes. |
