@@ -16,7 +16,7 @@ ear_w = 12; // [8:0.5:20]
 ear_stick = 8; // [4:0.5:16]
 switch_cutout_d = 12.4; // [8:0.1:40]
 switch_body_depth = 30; // [10:0.5:40]
-cable_hole_d = 8; // [4:0.5:16]
+cable_hole_d = 9; // [4:0.5:16]
 mount_screw = "M3";
 teardrop_holes = true; // [true, false]
 // Notch at the top of the box wall facing the deck (TX coil + IR emitter leads).
@@ -324,7 +324,7 @@ module motor_base(
                         orient = RIGHT
 );
 
-            up(floor_h + porch_inner_z / 2)
+            up(7 + floor_h + porch_inner_z / 2)
                 right(porch_x0 + wall_t + porch_inner_x / 2)
                     back(porch_outer_y / 2)
                         cyl(
