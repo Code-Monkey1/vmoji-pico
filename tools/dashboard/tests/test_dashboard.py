@@ -635,3 +635,83 @@ def test_the_device_log_keeps_updating_past_the_scrollback_limit():
     ]
     appended = model.add_messages(more)
     assert appended == ["after the limit"] or appended[0].endswith("after the limit")
+
+
+# --- pixel walk --------------------------------------------------------------
+
+
+def _sent_lines(window, monkeypatch):
+    """Capture command lines at the window's single send point."""
+    sent: list[str] = []
+    original = window._send
+
+    def spy(command):
+        sent.append(command.line)
+        original(command)
+
+    monkeypatch.setattr(window, "_send", spy)
+    return sent
+
+
+def test_pixel_walk_drives_the_board_and_records_scores(make_window, pump, monkeypatch,
+                                                        tmp_path):
+    window = make_window()
+    sent = _sent_lines(window, monkeypatch)
+
+    assert not window.walk_next_button.isEnabled()  # nothing to step through yet
+    window.walk_start_button.setChecked(True)
+    window.walk_next_button.click()
+    window.rate_pixel(3)
+    pump(0.5)  # let the simulator's acks come back through the reader
+
+    assert sent == ["X 0 0", "X 0 1", "X 0 2"]
+    assert window._walk.ratings == {(0, 1): 3}
+    assert "r0 c2" in window.walk_label.text()
+
+    window.walk_start_button.setChecked(False)
+    assert sent[-1] == "B"
+    assert not window.walk_rate_buttons[0].isEnabled()
+
+    out = tmp_path / "walk.csv"
+    window.export_walk_csv(str(out))
+    assert "0,1,,,3" in out.read_text()
+
+
+def test_scores_are_ignored_when_no_walk_is_running(make_window, monkeypatch):
+    window = make_window()
+    sent = _sent_lines(window, monkeypatch)
+
+    window.rate_pixel(4)
+
+    assert window._walk.ratings == {}
+    assert sent == []
+
+
+def test_digit_keys_score_the_lit_pixel(make_window, qt_app):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    window = make_window()
+    window.show()
+    window.walk_start_button.setChecked(True)
+    window.walk_start_button.setFocus()
+    qt_app.processEvents()
+
+    QTest.keyClick(window, Qt.Key.Key_4)
+
+    assert window._walk.ratings == {(0, 0): 4}
+
+
+def test_digits_typed_into_a_spin_box_are_not_scores(make_window, qt_app):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    window = make_window()
+    window.show()
+    window.walk_start_button.setChecked(True)
+    window.walk_interval_spin.setFocus()
+    qt_app.processEvents()
+
+    QTest.keyClick(window.walk_interval_spin, Qt.Key.Key_2)
+
+    assert window._walk.ratings == {}

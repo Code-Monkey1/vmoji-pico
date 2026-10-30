@@ -34,7 +34,12 @@ static inline const uint8_t *board_col_pins(void)
     return pins;
 }
 
-/** Row cathodes, bottom-to-top as mounted (Z up). */
+/**
+ * Row cathodes, top-to-bottom as mounted: index 0 is the top row. Verified on
+ * the board with the pixel walk (`X` command) on 2026-10-30; this used to say
+ * bottom-to-top. geometry_row_to_z() still treats row 0 as the bottom, so POV
+ * volumes currently render upside down.
+ */
 static inline const uint8_t *board_row_pins(void)
 {
     static const uint8_t pins[NB_ROW] = {

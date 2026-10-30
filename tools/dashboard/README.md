@@ -114,7 +114,7 @@ can add fields without breaking an older dashboard.
 
 ### Why the uplink is ASCII
 
-Commands stay line-oriented text (`S 2 3`, `G 4`, `D 900`, `B`, `P`, `Z`, `?`, `I`) so
+Commands stay line-oriented text (`S 2 3`, `G 4`, `X 3 5`, `D 900`, `B`, `P`, `Z`, `?`, `I`) so
 the board can still be driven from `minicom` with no tooling at all during
 bring-up. Framing and a CRC earn their keep on a 10 Hz downlink carrying packed
 binary; they are pure overhead on six commands a minute typed by a human.
@@ -238,6 +238,27 @@ It checks the numbers, not just that bytes moved: telemetry arriving well under
 1%, or jitter exceeding the mean scan period each produce a specific warning. It
 exits non-zero on failure, so it works in a script.
 
+### Pixel walk
+
+A soldering check for the matrix. **Pixel walk** in the side panel lights every
+LED alone, top-left to bottom-right, using the firmware's `X <row> <col>`
+command. Its ack names the row and column GPIOs, which the panel shows next to
+the lit pixel. Lit alone, every LED gets the same drive. So an LED that is dim
+here points to the LED itself or its two joints, while one that is dim only
+with the whole matrix on (`G 5`) points to current sharing on its row.
+
+Step with Prev/Next or let **Auto** advance on a timer. Score each LED from 0
+(dark) to 5 (as bright as the best one) with the buttons or the `0`-`5` keys;
+scoring moves to the next LED. **Export CSV...** writes
+`row,col,row_gpio,col_gpio,score` for all 64 pixels. Stop blanks the display.
+
+The same walk runs headless:
+
+```bash
+.venv/bin/python walk_pixels.py --port /dev/ttyACM0 --step   # Enter to advance, type a note to flag
+.venv/bin/python walk_pixels.py --port /dev/ttyACM0 --delay 0.3
+```
+
 ### Tests
 
 ```bash
@@ -286,6 +307,9 @@ it needs an event loop.
 | `tools/dashboard/model.py` | Bounded time series. Qt-free |
 | `tools/dashboard/panels.py` | What each readout row says, and when it is highlighted. Qt-free |
 | `tools/dashboard/reconnect.py` | Retry target and bounded backoff. Qt-free |
+| `tools/dashboard/pixel_walk.py` | Pixel walk order, `X` ack parsing, brightness scores, CSV. Qt-free |
+| `tools/dashboard/verify_link.py` | Headless bring-up check of the telemetry link |
+| `tools/dashboard/walk_pixels.py` | Headless pixel walk |
 | `tools/dashboard/reader.py` | `QThread` worker |
 | `tools/dashboard/widgets.py` | LED matrix view, key/value panel |
 | `tools/dashboard/main_window.py` | Layout, wiring, repaint loop |

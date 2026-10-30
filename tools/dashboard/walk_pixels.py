@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-"""Light every LED of the matrix alone, one after the other.
+"""Light every LED of the matrix alone, one after the other: the headless pixel walk.
 
-A soldering check. With the whole matrix on, LEDs that share a row also share
-that row's current, so a dim pixel there can be the LED, its joint, or just the
-sharing. Lit alone, every LED gets the same drive, so a pixel that is still dim
-or dark here is the LED or its wiring, and the GPIOs printed next to it say
-which joints to look at.
+The dashboard's "Pixel walk" panel is the main way to run this and lets you
+score each LED; this is the same walk for a terminal, or for a board without
+a display attached. See pixel_walk.py for why lighting LEDs alone isolates bad
+joints from current sharing.
 
-Order is top-left to bottom-right, one row at a time. Rows are numbered
-bottom-to-top and columns left-to-right as mounted (see vmoji/board_pins.h), so
-the walk starts at row 7, column 0. If the first pixel is not top-left, the
-orientation comment there is wrong for your build: tell it apart by the r/c
-printed for each step.
+Order is top-left to bottom-right, one row at a time.
 
     .venv/bin/python walk_pixels.py --port /dev/ttyACM0              # 1 s per LED
     .venv/bin/python walk_pixels.py --port /dev/ttyACM0 --delay 0.3
@@ -31,6 +26,7 @@ import contextlib
 import sys
 import time
 
+import pixel_walk
 import protocol
 import sources
 
@@ -47,12 +43,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--step", action="store_true",
                         help="advance on Enter, and record a note per pixel")
     return parser.parse_args(argv)
-
-
-def walk_order() -> list[tuple[int, int]]:
-    """Top-left to bottom-right, row by row, in firmware (row, col) indices."""
-    size = protocol.MATRIX_SIZE
-    return [(row, col) for row in range(size - 1, -1, -1) for col in range(size)]
 
 
 def send_and_wait(source: sources.Source, parser: protocol.FrameParser,
@@ -88,7 +78,9 @@ def main(argv: list[str] | None = None) -> int:
     notes: list[tuple[str, str]] = []
     status = 0
     try:
-        for index, (row, col) in enumerate(walk_order(), start=1):
+        walk = pixel_walk.PixelWalk()
+        while True:
+            row, col = walk.current
             ack = send_and_wait(source, parser, protocol.cmd_pixel(row, col))
             if ack is None:
                 print(f"FAIL  no reply to X {row} {col}: is the firmware running?")
@@ -101,9 +93,11 @@ def main(argv: list[str] | None = None) -> int:
                 status = 1
                 break
 
-            # "OK pixel r3 c5 row=GP21 col=GP11" -> "r3 c5 row=GP21 col=GP11"
-            label = ack.removeprefix("OK pixel ").strip()
-            prompt = f"[{index:2d}/64] {label}"
+            parsed = pixel_walk.parse_pixel_ack(ack)
+            if parsed is not None:
+                walk.note_ack(parsed)
+            label = walk.label()
+            prompt = f"[{walk.index + 1:2d}/{len(walk.order)}] {label}"
             if args.step:
                 note = input(f"{prompt}  note> ").strip()
                 if note.lower() == "q":
@@ -113,6 +107,8 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(prompt, flush=True)
                 time.sleep(args.delay)
+            if not walk.next():
+                break
     except KeyboardInterrupt:
         print()
     finally:

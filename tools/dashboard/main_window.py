@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pyqtgraph as pg
 from PySide6.QtCore import QSettings, Qt, QThread, QTimer, Slot
-from PySide6.QtGui import QAction, QFont, QKeySequence
+from PySide6.QtGui import QAction, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
 
 import model as model_module
 import panels
+import pixel_walk
 import protocol
 import reader as reader_module
 import reconnect
@@ -391,6 +392,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(link_box)
 
         layout.addWidget(self._build_control_panel())
+        layout.addWidget(self._build_walk_panel())
 
         scroller.setWidget(panel)
         return scroller
@@ -445,6 +447,78 @@ class MainWindow(QMainWindow):
             button.clicked.connect(lambda _=False, f=factory: self._send(f()))
             grid.addWidget(button, 2 + offset // 3, offset % 3)
 
+        return box
+
+    def _build_walk_panel(self) -> QWidget:
+        """Light the LEDs one at a time and score each one's brightness.
+
+        The logic lives in pixel_walk.py; this is buttons and a timer around it.
+        GPIOs shown for the lit pixel come from the firmware's own ack, so they
+        cannot drift from board_pins.h.
+        """
+        self._walk = pixel_walk.PixelWalk()
+        self._walking = False
+
+        box = QGroupBox("Pixel walk")
+        box.setToolTip(
+            "Lights every LED alone, top-left to bottom-right. Lit alone, a dim\n"
+            "LED is the LED or its joint; dim only with the whole row on is\n"
+            "current sharing. Score with the buttons or the 0-5 keys."
+        )
+        grid = QGridLayout(box)
+        grid.setContentsMargins(8, 6, 8, 8)
+
+        self.walk_start_button = QPushButton("Start")
+        self.walk_start_button.setCheckable(True)
+        self.walk_start_button.toggled.connect(self._toggle_walk)
+        grid.addWidget(self.walk_start_button, 0, 0)
+        self.walk_prev_button = QPushButton("Prev")
+        self.walk_prev_button.clicked.connect(lambda: self._step_walk(self._walk.prev))
+        grid.addWidget(self.walk_prev_button, 0, 1)
+        self.walk_next_button = QPushButton("Next")
+        self.walk_next_button.clicked.connect(lambda: self._step_walk(self._walk.next))
+        grid.addWidget(self.walk_next_button, 0, 2)
+
+        self.walk_label = QLabel("not running")
+        self.walk_label.setFont(QFont("monospace"))
+        grid.addWidget(self.walk_label, 1, 0, 1, 3)
+
+        rating_row = QHBoxLayout()
+        rating_row.addWidget(QLabel("Score:"))
+        self.walk_rate_buttons: list[QPushButton] = []
+        self._walk_shortcuts: list[QShortcut] = []
+        for score in range(pixel_walk.MAX_SCORE + 1):
+            button = QPushButton(str(score))
+            button.setToolTip("0 = dark, 5 = as bright as the best LED")
+            button.setFixedWidth(32)
+            button.clicked.connect(lambda _=False, n=score: self.rate_pixel(n))
+            rating_row.addWidget(button)
+            self.walk_rate_buttons.append(button)
+            # Spin boxes accept digits as text before a window shortcut sees
+            # them, so typing a dwell or interval still works while walking.
+            shortcut = QShortcut(QKeySequence(str(score)), self)
+            shortcut.activated.connect(lambda n=score: self.rate_pixel(n))
+            self._walk_shortcuts.append(shortcut)
+        grid.addLayout(rating_row, 2, 0, 1, 3)
+
+        self.walk_auto_check = QCheckBox("Auto, every")
+        self.walk_auto_check.toggled.connect(self._update_walk_timer)
+        grid.addWidget(self.walk_auto_check, 3, 0)
+        self.walk_interval_spin = QDoubleSpinBox()
+        self.walk_interval_spin.setRange(0.1, 10.0)
+        self.walk_interval_spin.setSingleStep(0.1)
+        self.walk_interval_spin.setValue(1.0)
+        self.walk_interval_spin.setSuffix(" s")
+        self.walk_interval_spin.valueChanged.connect(self._update_walk_timer)
+        grid.addWidget(self.walk_interval_spin, 3, 1)
+        self.walk_export_button = QPushButton("Export CSV...")
+        self.walk_export_button.clicked.connect(self._export_walk)
+        grid.addWidget(self.walk_export_button, 3, 2)
+
+        self._walk_timer = QTimer(self)
+        self._walk_timer.timeout.connect(self._auto_step_walk)
+
+        self._update_walk_controls()
         return box
 
     def _build_log_dock(self) -> None:
@@ -846,6 +920,7 @@ class MainWindow(QMainWindow):
         for message in messages:
             if isinstance(message, protocol.TextMessage):
                 self._note_identity(message.text)
+                self._note_pixel_ack(message.text)
 
         self._sync_dwell_control()
 
@@ -947,6 +1022,85 @@ class MainWindow(QMainWindow):
     def _on_replay_finished(self) -> None:
         self._append_log("replay finished")
         self.status_label.setText("replay finished")
+
+    # ----------------------------------------------------------- pixel walk
+
+    def _toggle_walk(self, checked: bool) -> None:
+        self._walking = checked
+        if checked:
+            self._walk.restart()
+            self._send_walk_pixel()
+        else:
+            self._send(protocol.cmd_blank())
+        self._update_walk_controls()
+        self._update_walk_timer()
+
+    def _send_walk_pixel(self) -> None:
+        self._send(protocol.cmd_pixel(*self._walk.current))
+        self._update_walk_label()
+
+    def _step_walk(self, move) -> None:
+        if self._walking and move():
+            self._send_walk_pixel()
+
+    def rate_pixel(self, score: int) -> None:
+        """Score the lit pixel and move on. Ignored unless a walk is running."""
+        if not self._walking:
+            return
+        if self._walk.rate(score):
+            self._send_walk_pixel()
+        else:
+            self._update_walk_label()
+            self._append_log(
+                f"pixel walk: last pixel scored, {len(self._walk.ratings)}/64 scored in all"
+            )
+
+    def _auto_step_walk(self) -> None:
+        if not self._walk.next():
+            self.walk_auto_check.setChecked(False)  # stops the timer
+            return
+        self._send_walk_pixel()
+
+    def _update_walk_timer(self) -> None:
+        if self._walking and self.walk_auto_check.isChecked():
+            self._walk_timer.start(int(self.walk_interval_spin.value() * 1000))
+        else:
+            self._walk_timer.stop()
+
+    def _update_walk_controls(self) -> None:
+        self.walk_start_button.setText("Stop" if self._walking else "Start")
+        for widget in (self.walk_prev_button, self.walk_next_button, *self.walk_rate_buttons):
+            widget.setEnabled(self._walking)
+        for shortcut in self._walk_shortcuts:
+            shortcut.setEnabled(self._walking)
+        self._update_walk_label()
+
+    def _update_walk_label(self) -> None:
+        if not self._walking:
+            scored = len(self._walk.ratings)
+            self.walk_label.setText(f"not running, {scored}/64 scored")
+            return
+        self.walk_label.setText(
+            f"{self._walk.index + 1:2d}/{len(self._walk.order)}  {self._walk.label()}"
+        )
+
+    def _note_pixel_ack(self, text: str) -> None:
+        ack = pixel_walk.parse_pixel_ack(text)
+        if ack is not None:
+            self._walk.note_ack(ack)
+            self._update_walk_label()
+
+    def export_walk_csv(self, path: str) -> None:
+        """Write the scores and GPIOs to a CSV. Exposed for tests, like start_recording."""
+        Path(path).write_text(self._walk.to_csv(), encoding="utf-8")
+        self._append_log(f"pixel walk exported to {Path(path).name}")
+
+    def _export_walk(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export pixel walk", "pixel-walk.csv", "CSV files (*.csv)"
+        )
+        if path:
+            self.export_walk_csv(path)
 
     def _send(self, command: protocol.Command) -> None:
         if self._worker is None:

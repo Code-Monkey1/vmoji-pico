@@ -407,20 +407,10 @@ def test_simulator_lights_one_pixel_and_rejects_out_of_range():
     assert lit == [(2, 6)]
 
 
-def test_walk_pixels_covers_matrix_top_left_first():
-    import walk_pixels
-
-    order = walk_pixels.walk_order()
-    assert len(set(order)) == 64
-    assert order[0] == (7, 0)  # top-left: rows are numbered bottom-to-top
-    assert order[7] == (7, 7)
-    assert order[-1] == (0, 7)
-
-
 def test_walk_pixels_runs_against_simulator(capsys):
     import walk_pixels
 
     assert walk_pixels.main(["--delay", "0"]) == 0
     out = capsys.readouterr().out
-    assert "[ 1/64] r7 c0" in out
-    assert "[64/64] r0 c7" in out
+    assert "[ 1/64] r0 c0" in out  # top-left first: firmware row 0 is the top
+    assert "[64/64] r7 c7" in out
