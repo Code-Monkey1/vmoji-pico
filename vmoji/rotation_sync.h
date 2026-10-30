@@ -31,8 +31,10 @@ void rotation_sync_set_sim(bool enabled);
 void rotation_sync_service(void);
 
 /**
- * True once per new revolution index pulse (IR or sim).
- * Writes the latest snapshot when returning true.
+ * True once per period-valid revolution index (IR or sim).
+ * The first edge after reset only arms the baseline; a second valid interval
+ * is required before this returns true. Bounce / out-of-range gaps never arm
+ * a scan. Writes the latest snapshot when returning true.
  */
 bool rotation_sync_take_rev(RotationSnapshot *out);
 

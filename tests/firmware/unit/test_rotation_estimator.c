@@ -8,22 +8,31 @@ int main(void)
     RotationEstimator e;
     rotation_estimator_init(&e, ROTATION_SIM_PERIOD_US);
 
-    rotation_estimator_note_edge(&e, 1000000ull);
-    TEST_CHECK(e.sync_ok);
-    TEST_CHECK_EQ_U32(e.rev_count, 1);
+    /* First edge: baseline only — no period-valid sync yet. */
+    TEST_CHECK(!rotation_estimator_note_edge(&e, 1000000ull));
+    TEST_CHECK(!e.sync_ok);
+    TEST_CHECK_EQ_U32(e.rev_count, 0);
     TEST_CHECK_EQ_U32(e.period_us, ROTATION_SIM_PERIOD_US);
 
-    rotation_estimator_note_edge(&e, 1000000ull + 60000ull);
-    TEST_CHECK_EQ_U32(e.rev_count, 2);
-    /* EMA: (60000*3 + 60000)/4 after first sample replaces? first sample sets
-     * from previous default: (60000*3+60000)/4 = 60000 */
+    TEST_CHECK(rotation_estimator_note_edge(&e, 1000000ull + 60000ull));
+    TEST_CHECK(e.sync_ok);
+    TEST_CHECK_EQ_U32(e.rev_count, 1);
+    /* First valid sample replaces then EMA-stabilizes at 60000. */
     TEST_CHECK_EQ_U32(e.period_us, 60000u);
     TEST_CHECK_EQ_U32(rotation_estimator_rpm(&e), 1000u);
 
-    /* Bounce < 5 ms ignored for EMA but still counts edge. */
+    /* Bounce < 5 ms ignored: period and baseline unchanged, not valid. */
     uint32_t before = e.period_us;
-    rotation_estimator_note_edge(&e, e.last_edge_us + 1000ull);
+    uint64_t good_edge = e.last_edge_us;
+    TEST_CHECK(!rotation_estimator_note_edge(&e, e.last_edge_us + 1000ull));
     TEST_CHECK_EQ_U32(e.period_us, before);
+    TEST_CHECK_EQ_U32((uint32_t)e.last_edge_us, (uint32_t)good_edge);
+    TEST_CHECK_EQ_U32(e.rev_count, 1);
+
+    /* Next valid edge still measured from the last good baseline. */
+    TEST_CHECK(rotation_estimator_note_edge(&e, good_edge + 60000ull));
+    TEST_CHECK_EQ_U32(e.rev_count, 2);
+    TEST_CHECK_EQ_U32(e.period_us, 60000u);
 
     /* Sync loss */
     e.sim = false;

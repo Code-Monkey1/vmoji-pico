@@ -29,10 +29,24 @@ static void bake_active_content(PovService *svc)
 
 static void stop_display(PovService *svc)
 {
-    svc->core_stop = true;
     svc->plat->signal_stop();
     svc->plat->blank();
     svc->display_active = false;
+    svc->have_latched_start = false;
+    /* Core1 release_scan clears scan_busy; also clear here so core0 bake
+     * does not treat a stopped rev as still owning a slot. */
+    svc->scan_busy = false;
+}
+
+static void start_scan(PovService *svc, uint32_t period_us)
+{
+    svc->display_active = true;
+    svc->busy_slot = svc->display_list;
+    __dmb();
+    svc->scan_busy = true;
+    __dmb();
+    svc->plat->signal_start(period_us, &svc->lists[svc->display_list]);
+    svc->plat->note_scan();
 }
 
 void pov_service_init(PovService *svc, const PovPlatform *plat)
@@ -45,7 +59,7 @@ void pov_service_init(PovService *svc, const PovPlatform *plat)
     svc->scan_busy = false;
     svc->rebake_needed = true;
     svc->display_active = false;
-    svc->core_stop = true;
+    svc->have_latched_start = false;
     svc->mode = APP_MODE_STATIC;
     svc->volume_id = 1;
     bake_active_content(svc);
@@ -63,10 +77,8 @@ void pov_service_set_mode(PovService *svc, AppMode mode)
         stop_display(svc);
         svc->plat->sync_set_sim(false);
     } else if (mode == APP_MODE_SIM) {
-        svc->core_stop = false;
         svc->plat->sync_set_sim(true);
     } else {
-        svc->core_stop = false;
         svc->plat->sync_set_sim(false);
     }
     svc->rebake_needed = true;
@@ -98,7 +110,21 @@ void pov_service_request_rebake(PovService *svc)
 
 void pov_service_release_scan(PovService *svc)
 {
+    __dmb();
     svc->scan_busy = false;
+    __dmb();
+}
+
+void pov_service_pause(PovService *svc)
+{
+    stop_display(svc);
+    svc->plat->sync_reset();
+}
+
+void pov_service_resume(PovService *svc)
+{
+    svc->plat->sync_reset();
+    svc->have_latched_start = false;
 }
 
 void pov_service_service(PovService *svc)
@@ -123,17 +149,24 @@ void pov_service_service(PovService *svc)
     }
 
     RotationSnapshot snap;
-    if (!svc->plat->sync_take_rev(&snap)) {
+    if (svc->plat->sync_take_rev(&snap)) {
+        svc->last_rot = snap;
+        if (svc->scan_busy) {
+            /* Finish the in-flight rev; start next with latest period. */
+            svc->latched_period_us = snap.period_us;
+            svc->have_latched_start = true;
+            return;
+        }
+        start_scan(svc, snap.period_us);
         return;
     }
-    svc->last_rot = snap;
 
-    svc->core_stop = false;
-    svc->display_active = true;
-    svc->busy_slot = svc->display_list;
-    svc->scan_busy = true;
-    svc->plat->signal_start(snap.period_us, &svc->lists[svc->display_list]);
-    svc->plat->note_scan();
+    /* Edge arrived while busy; scan has since finished — phase-lock now. */
+    if (!svc->scan_busy && svc->have_latched_start) {
+        uint32_t period = svc->latched_period_us;
+        svc->have_latched_start = false;
+        start_scan(svc, period);
+    }
 }
 
 RotationSnapshot pov_service_rotation(const PovService *svc)

@@ -35,8 +35,19 @@ void rotation_estimator_reset(RotationEstimator *e, uint32_t default_period_us);
 void rotation_estimator_set_sim(RotationEstimator *e, bool sim,
                                uint32_t default_period_us);
 
-/** Record an index edge at now_us. Updates EMA when the sample is in range. */
-void rotation_estimator_note_edge(RotationEstimator *e, uint64_t now_us);
+/**
+ * Record an index edge at now_us.
+ *
+ * Returns true only for a **period-valid** sample (interval in
+ * [ROT_EST_MIN_PERIOD_US, ROT_EST_MAX_PERIOD_US]). Those edges update the EMA,
+ * advance rev_count, set sync_ok, and are the only ones that should start a
+ * POV scan.
+ *
+ * The first edge after init/reset only establishes the baseline timestamp and
+ * returns false (two-edge lock). Rejected intervals leave last_edge_us alone
+ * so bounce does not pollute the next period measurement.
+ */
+bool rotation_estimator_note_edge(RotationEstimator *e, uint64_t now_us);
 
 /**
  * If sync was ok and now_us is past the loss window since last edge, clear

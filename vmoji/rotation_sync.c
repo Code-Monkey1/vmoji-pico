@@ -105,7 +105,10 @@ bool rotation_sync_take_rev(RotationSnapshot *out)
     g_irq_pending = false;
     restore_interrupts(ints);
 
-    rotation_estimator_note_edge(&g_est, edge);
+    if (!rotation_estimator_note_edge(&g_est, edge)) {
+        /* Baseline-only or bounce/out-of-range — do not arm a scan start. */
+        return false;
+    }
     g_sync_lost_pending = false;
 
     if (out) {

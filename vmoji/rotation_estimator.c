@@ -37,22 +37,31 @@ void rotation_estimator_set_sim(RotationEstimator *e, bool sim,
     }
 }
 
-void rotation_estimator_note_edge(RotationEstimator *e, uint64_t now_us)
+bool rotation_estimator_note_edge(RotationEstimator *e, uint64_t now_us)
 {
-    if (e->last_edge_us != 0) {
-        uint32_t sample = (uint32_t)(now_us - e->last_edge_us);
-        if (sample >= ROT_EST_MIN_PERIOD_US && sample <= ROT_EST_MAX_PERIOD_US) {
-            if (e->period_us == 0) {
-                e->period_us = sample;
-            } else {
-                e->period_us =
-                    (e->period_us * ROT_EST_EMA_NUM + sample) / ROT_EST_EMA_DEN;
-            }
-        }
+    if (e->last_edge_us == 0) {
+        /* First edge: baseline only — need a second edge for a period. */
+        e->last_edge_us = now_us;
+        return false;
+    }
+
+    uint32_t sample = (uint32_t)(now_us - e->last_edge_us);
+    if (sample < ROT_EST_MIN_PERIOD_US || sample > ROT_EST_MAX_PERIOD_US) {
+        /* Rejected: keep last good baseline so bounce does not stretch the
+         * next valid interval. */
+        return false;
+    }
+
+    if (e->period_us == 0) {
+        e->period_us = sample;
+    } else {
+        e->period_us =
+            (e->period_us * ROT_EST_EMA_NUM + sample) / ROT_EST_EMA_DEN;
     }
     e->last_edge_us = now_us;
     e->rev_count++;
     e->sync_ok = true;
+    return true;
 }
 
 bool rotation_estimator_check_loss(RotationEstimator *e, uint64_t now_us)

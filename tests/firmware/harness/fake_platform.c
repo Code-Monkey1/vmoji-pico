@@ -66,7 +66,9 @@ static bool fake_sync_take_rev(RotationSnapshot *out)
             return false;
         }
         g_st->edge_pending = false;
-        rotation_estimator_note_edge(&g_st->est, g_st->edge_us);
+        if (!rotation_estimator_note_edge(&g_st->est, g_st->edge_us)) {
+            return false;
+        }
         g_st->sync_lost_pending = false;
         g_st->snapshot = rotation_estimator_snapshot(&g_st->est);
         if (out) {
