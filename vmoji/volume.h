@@ -1,5 +1,10 @@
 // Polar voxel volume: the content model, with no GPIO knowledge.
 //
+// Content is addressed in (theta, col, z), z being height with 0 at the
+// bottom; volume_set()/volume_get() convert through geometry.h. Storage keeps
+// matrix rows (0 = top) because that is what the codec scans out, so shape
+// code never has to know which way the rows are numbered.
+//
 // Double-buffered so core 0 can bake the next revolution while core 1 displays
 // the active one. Flip only between revolutions.
 
@@ -16,7 +21,7 @@
 extern "C" {
 #endif
 
-/** One angular slice: 8 rows x 8 cols of on/off voxels. */
+/** One angular slice: 8 matrix rows (0 = top) x 8 cols of on/off voxels. */
 typedef struct {
     bool voxel[NB_ROW][NB_COL];
 } VolumeSlice;
@@ -40,8 +45,11 @@ void volume_flip(VolumeBuffer *buf);
 
 void volume_clear(VolumeFrame *frame);
 
-void volume_set(VolumeFrame *frame, int theta, int col, int row, bool on);
-bool volume_get(const VolumeFrame *frame, int theta, int col, int row);
+/** Set the voxel at height z (0 = bottom). Out-of-range arguments are ignored. */
+void volume_set(VolumeFrame *frame, int theta, int col, int z, bool on);
+
+/** Read the voxel at height z (0 = bottom). Out of range reads as off. */
+bool volume_get(const VolumeFrame *frame, int theta, int col, int z);
 
 /**
  * Set both left and right columns for a given absolute radius (1..4) at (θ,z).

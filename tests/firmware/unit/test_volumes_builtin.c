@@ -59,6 +59,17 @@ int main(void)
     TEST_CHECK(count_voxels(&frame) > 5);
     TEST_CHECK(only_pos_radius(&frame));
 
+    /* Upright L: lone marker in the top matrix row, foot one row above the
+     * bottom, nothing from the foot in the top half. */
+    const int marker_col = geometry_radius_to_col_pos(4);
+    const int foot_col = geometry_radius_to_col_pos(2);
+    TEST_CHECK(frame.slice[0].voxel[0][marker_col]);
+    TEST_CHECK(frame.slice[0].voxel[NB_ROW - 2][foot_col]);
+    TEST_CHECK(frame.slice[5].voxel[NB_ROW - 2][foot_col]);
+    for (int row = 0; row < NB_ROW / 2; row++) {
+        TEST_CHECK(!frame.slice[5].voxel[row][foot_col]);
+    }
+
     volumes_builtin_draw(2, &frame);
     TEST_CHECK(count_voxels(&frame) > 0);
     TEST_CHECK(only_theta0(&frame));

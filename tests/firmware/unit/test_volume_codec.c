@@ -46,7 +46,8 @@ int main(void)
     const int theta = 3;
     const int col = 0;
     const int row = 2;
-    volume_set(&one, theta, col, row, true);
+    /* The codec works in matrix rows; content is set by height. */
+    volume_set(&one, theta, col, geometry_row_to_z(row), true);
     volume_codec_bake(&one, &list);
 
     uint8_t w = volume_codec_col_weight(col);

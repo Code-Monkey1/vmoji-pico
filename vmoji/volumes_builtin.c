@@ -7,7 +7,8 @@
 static void draw_wireframe_cube(VolumeFrame *frame)
 {
     volume_clear(frame);
-    /* Cube faces at a few angles; edges along r and z. */
+    /* Cube faces at a few angles; edges along r and z. Spans z 1..6 of 0..7,
+     * so it sits vertically centred. */
     const int thetas[] = {0, 6, 12, 18};
     for (unsigned t = 0; t < sizeof(thetas) / sizeof(thetas[0]); t++) {
         int theta = thetas[t];
@@ -30,17 +31,18 @@ static void draw_wireframe_cube(VolumeFrame *frame)
 static void draw_asymmetric_l(VolumeFrame *frame)
 {
     volume_clear(frame);
-    /* Vertical stem near θ=0, only on the +radius side (orientation cue). */
+    /* Vertical stem near θ=0, only on the +radius side (orientation cue).
+     * Upright means: foot along the bottom, lone marker voxel at the top. */
     for (int z = 1; z <= 6; z++) {
         volume_set(frame, 0, geometry_radius_to_col_pos(3), z, true);
         volume_set(frame, 1, geometry_radius_to_col_pos(3), z, true);
     }
-    /* Foot of the L along +θ at the bottom, still +radius only. */
+    /* Foot of the L along +θ at the bottom (z=1), still +radius only. */
     for (int theta = 0; theta <= 5; theta++) {
         volume_set(frame, theta, geometry_radius_to_col_pos(3), 1, true);
         volume_set(frame, theta, geometry_radius_to_col_pos(2), 1, true);
     }
-    /* Small tip marker at high Z so up/down is obvious if inverted. */
+    /* Small tip marker at the top (z=7) so up/down is obvious if inverted. */
     volume_set(frame, 0, geometry_radius_to_col_pos(4), 7, true);
 }
 

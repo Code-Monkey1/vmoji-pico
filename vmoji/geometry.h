@@ -3,6 +3,11 @@
 // Default: candle-like diameter span — columns straddle the spin axis
 // (±radius), rows are height. Swap this adapter later for an offset mount
 // without touching the scanner or codec call sites.
+//
+// Vertical convention: content uses height z with 0 at the bottom, z up.
+// Matrix rows are numbered top-down (row 0 is the top, see board_row_pins()),
+// so the row <-> z flip below is the one place vertical orientation lives. An
+// inverted mount changes only these two functions.
 
 #ifndef VMOJI_GEOMETRY_H
 #define VMOJI_GEOMETRY_H
@@ -39,15 +44,19 @@ static inline int geometry_col_abs_radius(int col)
     return r < 0 ? -r : r;
 }
 
-/** Row index 0..7 → height z (identity for the prototype panel). */
+/** Matrix row 0..7 (0 = top) → height z (0 = bottom). */
 static inline int geometry_row_to_z(int row)
 {
-    return row;
+    return NB_ROW - 1 - row;
 }
 
+/**
+ * Height z (0 = bottom) → matrix row (0 = top). Out-of-range z gives an
+ * out-of-range row, which volume_set() rejects.
+ */
 static inline int geometry_z_to_row(int z)
 {
-    return z;
+    return NB_ROW - 1 - z;
 }
 
 /** Radius 1..4 → column on the positive side (right half). */

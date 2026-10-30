@@ -28,8 +28,9 @@ void volume_clear(VolumeFrame *frame)
     memset(frame, 0, sizeof(*frame));
 }
 
-void volume_set(VolumeFrame *frame, int theta, int col, int row, bool on)
+void volume_set(VolumeFrame *frame, int theta, int col, int z, bool on)
 {
+    int row = geometry_z_to_row(z);
     if (theta < 0 || theta >= ANGULAR_SLICES) {
         return;
     }
@@ -39,8 +40,9 @@ void volume_set(VolumeFrame *frame, int theta, int col, int row, bool on)
     frame->slice[theta].voxel[row][col] = on;
 }
 
-bool volume_get(const VolumeFrame *frame, int theta, int col, int row)
+bool volume_get(const VolumeFrame *frame, int theta, int col, int z)
 {
+    int row = geometry_z_to_row(z);
     if (theta < 0 || theta >= ANGULAR_SLICES) {
         return false;
     }
@@ -55,7 +57,6 @@ void volume_set_radius(VolumeFrame *frame, int theta, int abs_r, int z, bool on)
     if (abs_r < 1 || abs_r > 4) {
         return;
     }
-    int row = geometry_z_to_row(z);
-    volume_set(frame, theta, geometry_radius_to_col_neg(abs_r), row, on);
-    volume_set(frame, theta, geometry_radius_to_col_pos(abs_r), row, on);
+    volume_set(frame, theta, geometry_radius_to_col_neg(abs_r), z, on);
+    volume_set(frame, theta, geometry_radius_to_col_pos(abs_r), z, on);
 }
