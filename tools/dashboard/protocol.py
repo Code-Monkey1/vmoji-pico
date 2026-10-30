@@ -419,6 +419,11 @@ def cmd_glyph(glyph_id: int) -> Command:
     return Command(f"G {glyph_id}", f"select glyph {glyph_id}")
 
 
+def cmd_pixel(row: int, col: int) -> Command:
+    """Light one pixel alone. A bring-up aid; the ack names the two GPIOs."""
+    return Command(f"X {row} {col}", f"light pixel r{row} c{col} alone")
+
+
 def cmd_dwell(microseconds: int) -> Command:
     return Command(f"D {microseconds}", f"set row dwell to {microseconds} us")
 

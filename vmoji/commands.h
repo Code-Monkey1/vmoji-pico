@@ -9,6 +9,7 @@
 //   S <0-9> <0-9>   set the two score digits
 //   H               heartbeat, pulses the activity pixel
 //   G <0-5>         select a glyph
+//   X <row> <col>   light one pixel alone (bring-up), ack names its GPIOs
 //   D <us>          set per-row dwell time
 //   B               blank the display
 //   P               toggle scan pause
@@ -43,6 +44,7 @@ typedef struct {
     void (*draw_score)(int home, int away);
     void (*arm_activity)(uint32_t duration_us, bool extend);
     void (*draw_glyph)(int glyph_id);
+    void (*draw_pixel)(int row, int col);
     void (*set_dwell)(uint16_t us);
     uint16_t (*get_dwell)(void);
     void (*clear_matrix)(void);

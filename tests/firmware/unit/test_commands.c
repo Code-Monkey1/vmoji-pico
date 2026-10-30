@@ -17,6 +17,8 @@ static uint16_t g_dwell = 400;
 static int g_score_home = -1;
 static int g_score_away = -1;
 static int g_glyph = -1;
+static int g_pixel_row = -1;
+static int g_pixel_col = -1;
 static int g_blank_count;
 
 static void feed_line(const char *line)
@@ -72,6 +74,11 @@ static void stub_glyph(int id)
 {
     g_glyph = id;
 }
+static void stub_pixel(int row, int col)
+{
+    g_pixel_row = row;
+    g_pixel_col = col;
+}
 static void stub_set_dwell(uint16_t us)
 {
     g_dwell = us;
@@ -115,6 +122,7 @@ static void install_stubs(void)
         .draw_score = stub_draw_score,
         .arm_activity = stub_arm,
         .draw_glyph = stub_glyph,
+        .draw_pixel = stub_pixel,
         .set_dwell = stub_set_dwell,
         .get_dwell = stub_get_dwell,
         .clear_matrix = stub_clear,
@@ -168,6 +176,31 @@ int main(void)
     feed_line("S 2 3");
     TEST_CHECK_EQ_INT(g_score_home, 2);
     TEST_CHECK_EQ_INT(g_score_away, 3);
+
+    /* Single pixel: both coordinates parsed, ack names the GPIOs. */
+    int err_before = g_cmd_err;
+    feed_line("X 3 5");
+    TEST_CHECK_EQ_INT(g_pixel_row, 3);
+    TEST_CHECK_EQ_INT(g_pixel_col, 5);
+    TEST_CHECK(strncmp(g_last_ack, "OK pixel r3 c5", 14) == 0);
+    TEST_CHECK(strstr(g_last_ack, "row=GP") != NULL);
+    TEST_CHECK(strstr(g_last_ack, "col=GP") != NULL);
+    feed_line("X 0 0");
+    TEST_CHECK_EQ_INT(g_pixel_row, 0);
+    TEST_CHECK_EQ_INT(g_pixel_col, 0);
+    feed_line("X 7 7");
+    TEST_CHECK_EQ_INT(g_pixel_row, 7);
+    TEST_CHECK_EQ_INT(g_pixel_col, 7);
+
+    /* Rejected without touching the display. */
+    feed_line("X 8 0");
+    feed_line("X 0 8");
+    feed_line("X 3");
+    feed_line("X");
+    TEST_CHECK_EQ_INT(g_cmd_err, err_before + 4);
+    TEST_CHECK_EQ_INT(g_pixel_row, 7);
+    TEST_CHECK_EQ_INT(g_pixel_col, 7);
+    TEST_CHECK(strncmp(g_last_ack, "ERR pixel", 9) == 0);
 
     /* Idle line reset: partial command, wait, then new command. */
     fake_time_set(0);

@@ -522,6 +522,24 @@ class SimSource:
                 self._glyph_id = int(argument)
                 self._rows = self._glyph_rows(self._glyph_id)
                 ack = f"OK glyph {self._glyph_id}"
+            elif verb == "X":
+                parts = argument.split()
+                if (
+                    len(parts) == 2
+                    and all(p.isdigit() for p in parts)
+                    and all(int(p) < protocol.MATRIX_SIZE for p in parts)
+                ):
+                    row, col = int(parts[0]), int(parts[1])
+                    self._glyph_id = 0
+                    self._rows = tuple(
+                        (0x80 >> col) if r == row else 0 for r in range(protocol.MATRIX_SIZE)
+                    )
+                    # The simulator has no pins, so it cannot name them.
+                    ack = f"OK pixel r{row} c{col}"
+                else:
+                    ok = False
+                    last = protocol.MATRIX_SIZE - 1
+                    ack = f"ERR pixel row 0-{last} col 0-{last}"
             elif (
                 verb == "D"
                 and argument.isdigit()

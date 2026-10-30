@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "board_pins.h"
 #include "matrix.h"
 #include "telemetry_flags.h"
 #include "volumes_builtin.h"
@@ -60,6 +61,10 @@ static void default_draw_glyph(int id)
 {
     matrix_draw_glyph(id);
 }
+static void default_draw_pixel(int row, int col)
+{
+    matrix_draw_pixel(row, col);
+}
 static void default_set_dwell(uint16_t us)
 {
     matrix_set_row_dwell(us);
@@ -108,6 +113,7 @@ void commands_init_default(void)
         .draw_score = default_draw_score,
         .arm_activity = default_arm_activity,
         .draw_glyph = default_draw_glyph,
+        .draw_pixel = default_draw_pixel,
         .set_dwell = default_set_dwell,
         .get_dwell = default_get_dwell,
         .clear_matrix = default_clear,
@@ -130,24 +136,36 @@ void commands_init_default(void)
 }
 #endif
 
-/** Parse a non-negative decimal integer, returning -1 if there are no digits. */
-static int parse_uint(const char *cursor)
+/**
+ * Parse a non-negative decimal integer, returning -1 if there are no digits.
+ * Advances *cursor past the digits, so several arguments can be read in turn.
+ */
+static int parse_uint_next(const char **cursor)
 {
-    while (*cursor == ' ') {
-        cursor++;
+    const char *p = *cursor;
+    while (*p == ' ') {
+        p++;
     }
-    if (*cursor < '0' || *cursor > '9') {
+    if (*p < '0' || *p > '9') {
+        *cursor = p;
         return -1;
     }
     int value = 0;
-    while (*cursor >= '0' && *cursor <= '9') {
-        value = value * 10 + (*cursor - '0');
+    while (*p >= '0' && *p <= '9') {
+        value = value * 10 + (*p - '0');
         if (value > 1000000) {
             value = 1000000;
         }
-        cursor++;
+        p++;
     }
+    *cursor = p;
     return value;
+}
+
+/** Parse a non-negative decimal integer, returning -1 if there are no digits. */
+static int parse_uint(const char *cursor)
+{
+    return parse_uint_next(&cursor);
 }
 
 /*
@@ -203,6 +221,23 @@ static bool cmd_glyph(const char *args, char *ack, size_t ack_size)
     g_deps.draw_glyph(glyph_id);
     g_deps.set_glyph_telemetry((uint8_t)glyph_id);
     snprintf(ack, ack_size, "OK glyph %d", glyph_id);
+    return true;
+}
+
+static bool cmd_pixel(const char *args, char *ack, size_t ack_size)
+{
+    int row = parse_uint_next(&args);
+    int col = parse_uint_next(&args);
+    if (row < 0 || row >= NB_ROW || col < 0 || col >= NB_COL) {
+        snprintf(ack, ack_size, "ERR pixel row 0-%d col 0-%d", NB_ROW - 1, NB_COL - 1);
+        return false;
+    }
+    g_deps.draw_pixel(row, col);
+    g_deps.set_glyph_telemetry(0);
+    /* Name the two GPIOs: a dim or dead pixel is then traceable to a pin and
+     * its solder joint without opening board_pins.h. */
+    snprintf(ack, ack_size, "OK pixel r%d c%d row=GP%u col=GP%u", row, col,
+             (unsigned)board_row_pins()[row], (unsigned)board_col_pins()[col]);
     return true;
 }
 
@@ -318,6 +353,7 @@ static const struct {
     {'S', cmd_score},
     {'H', cmd_heartbeat},
     {'G', cmd_glyph},
+    {'X', cmd_pixel},
     {'D', cmd_dwell},
     {'B', cmd_blank},
     {'P', cmd_pause},

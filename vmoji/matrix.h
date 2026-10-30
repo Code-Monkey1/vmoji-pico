@@ -48,6 +48,16 @@ void matrix_clear(void);
 /** Draw one of the built-in glyphs. Ignores an out-of-range id. */
 void matrix_draw_glyph(int glyph_id);
 
+/**
+ * Clear the display and light exactly one pixel. Ignores an out-of-range
+ * coordinate (and leaves the display cleared).
+ *
+ * Bring-up aid: lit alone, every LED carries the full row current by itself,
+ * so comparing pixels this way separates a weak LED or joint from current
+ * sharing that only shows when a whole row is on.
+ */
+void matrix_draw_pixel(int row, int col);
+
 /** Draw two single digits, home on the left and away on the right. */
 void matrix_draw_score(int home, int away);
 

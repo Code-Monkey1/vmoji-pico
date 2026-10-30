@@ -378,3 +378,49 @@ def test_injected_errors_are_caught_by_the_crc():
         parser.feed(sim.read())
 
     assert parser.stats.crc_errors + parser.stats.resync_bytes > 0
+
+
+def test_pixel_command_encoding():
+    assert protocol.cmd_pixel(3, 5).encode() == b"X 3 5\n"
+
+
+def test_simulator_lights_one_pixel_and_rejects_out_of_range():
+    sim = sources.SimSource(seed=3)
+    parser = protocol.FrameParser()
+    parser.feed(sim.read())  # clear the banner
+
+    sim.write(protocol.cmd_pixel(2, 6).encode())
+    sim.write(b"X 8 0\n")
+    acks = [m.text for m in parser.feed(sim.read()) if isinstance(m, protocol.TextMessage)]
+    assert "OK pixel r2 c6" in acks
+    assert any(text.startswith("ERR pixel") for text in acks)
+
+    frame = None
+    for _ in range(80):
+        for message in parser.feed(sim.read()):
+            if isinstance(message, protocol.FrameBuffer):
+                frame = message
+        if frame is not None:
+            break
+    assert frame is not None
+    lit = [(r, c) for r in range(8) for c in range(8) if frame.pixel(r, c)]
+    assert lit == [(2, 6)]
+
+
+def test_walk_pixels_covers_matrix_top_left_first():
+    import walk_pixels
+
+    order = walk_pixels.walk_order()
+    assert len(set(order)) == 64
+    assert order[0] == (7, 0)  # top-left: rows are numbered bottom-to-top
+    assert order[7] == (7, 7)
+    assert order[-1] == (0, 7)
+
+
+def test_walk_pixels_runs_against_simulator(capsys):
+    import walk_pixels
+
+    assert walk_pixels.main(["--delay", "0"]) == 0
+    out = capsys.readouterr().out
+    assert "[ 1/64] r7 c0" in out
+    assert "[64/64] r0 c7" in out

@@ -107,6 +107,15 @@ void matrix_draw_glyph(int glyph_id)
     }
 }
 
+void matrix_draw_pixel(int row, int col)
+{
+    matrix_clear();
+    if (row < 0 || row >= NB_ROW || col < 0 || col >= NB_COL) {
+        return;
+    }
+    frame_buffer[row][col] = true;
+}
+
 static void draw_digit_3x5(int digit, int start_col)
 {
     if (digit < 0 || digit > 9 || start_col < 0 || start_col + 3 > NB_COL) {
