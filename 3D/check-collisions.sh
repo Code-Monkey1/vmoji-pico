@@ -21,6 +21,7 @@ CHECKS=(
     bearings_base bearings_deck bearings_rotor
     stud_rotor stud_base stud_deck
     head_rotor coils ir_parts ir_sweep
+    base_jack base_switch jack_switch
     iron_columns iron_posts iron_head
 )
 INFO_CHECKS=(mesh)

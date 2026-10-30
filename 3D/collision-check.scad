@@ -67,6 +67,9 @@ module run_check(name) {
     else if (name == "coils") intersection() { union() { asm_deck(); asm_head(); } union() { asm_tx_coil(); asm_rx_coil(); } }
     else if (name == "ir_parts") intersection() { union() { asm_deck(); asm_head(); } union() { asm_ir_emitter(); asm_ir_receiver(); } }
     else if (name == "ir_sweep") intersection() { asm_ir_emitter(); asm_ir_receiver_envelope(); }
+    else if (name == "base_jack") intersection() { asm_base(); union() { mb_jack_ghost(); asm_jack(); } }
+    else if (name == "base_switch") intersection() { asm_base(); union() { mb_switch_keepout(); asm_switch(); } }
+    else if (name == "jack_switch") intersection() { mb_jack_ghost(); mb_switch_keepout(); }
     else if (name == "iron_columns") intersection() { asm_base(); _iron_cols(); }
     else if (name == "iron_posts") intersection() { asm_base(); _iron_posts(); }
     else if (name == "iron_head") intersection() { asm_head(); _iron_head(); }

@@ -140,6 +140,61 @@ module asm_display_envelope() {
         cyl(r = mb_head_sweep_r(), h = vm_display_pcb_t + span + vm_led_xy + 2, anchor = BOTTOM);
 }
 
+// 12V female jack (DAYKIT 2.1x5.5 screw-terminal adapter), seated in the base cradle.
+// Approximate: listing envelope, socket on the front face, 2 terminal screws on top, wires out the back.
+module asm_jack(colored = false) {
+    translate([mb_jack_x(), mb_jack_front_y(), vm_floor_h + vm_jack_lift]) {
+        color(colored ? "#202020" : undef)
+            difference() {
+                cuboid([vm_jack_w, vm_jack_l, vm_jack_h], anchor = BACK + BOTTOM, rounding = 1.5, edges = "Y");
+                up(vm_jack_h / 2) back(0.1) cyl(d = 5.6, h = 10, anchor = TOP, orient = FWD);
+            }
+        color(colored ? "gold" : undef)
+            up(vm_jack_h / 2) fwd(0.2) cyl(d = 2, h = 8, anchor = BOTTOM, orient = FWD);
+        color(colored ? "silver" : undef)
+            for (sx = [1, -1])
+                translate([sx * 3.5, -vm_jack_l + 6, vm_jack_h - 0.01])
+                    cyl(d = 4.5, h = 0.8, anchor = BOTTOM);
+        color(colored ? "red" : undef) translate([3.5, -vm_jack_l + 0.01, 5]) cyl(d = 2.5, h = 8, anchor = TOP, orient = FWD);
+        color(colored ? "black" : undef) translate([-3.5, -vm_jack_l + 0.01, 5]) cyl(d = 2.5, h = 8, anchor = TOP, orient = FWD);
+    }
+}
+
+// Lit toggle switch on the +X wall: body + spade terminals + crimps inside, bushing through the
+// wall, red flip cover outside. Approximate; the inside matches the measured keep-out.
+module asm_switch(colored = false) {
+    x1 = mb_box_inner_x1();
+    xo = x1 + vm_wall_t;
+    blade_l = 8;
+    translate([0, mb_switch_y(), mb_switch_z()]) {
+        color(colored ? "#303030" : undef)
+            right(x1) cuboid([vm_switch_body_depth, vm_switch_body_w, vm_switch_body_h], anchor = RIGHT, rounding = 1, edges = "X");
+        for (dy = [-9, 0, 9]) {
+            color(colored ? "silver" : undef)
+                translate([x1 - vm_switch_body_depth + 0.01, dy, 0])
+                    cuboid([blade_l, 0.8, 6.35], anchor = RIGHT);
+            // Insulated crimp over the blade, out to the measured 34 mm depth.
+            color(colored ? "royalblue" : undef)
+                translate([x1 - mb_switch_keepout_depth(), dy, 0])
+                    cuboid([vm_switch_conn_depth - 1, 3.5, 7.5], anchor = LEFT);
+        }
+        color(colored ? "silver" : undef) {
+            right(x1 - 0.01) cyl(d = vm_switch_bushing_d, h = vm_wall_t + 6, anchor = BOTTOM, orient = RIGHT);
+            right(xo + 1.5) cyl(d = mb_hex_circum_d(14), h = 2, anchor = BOTTOM, orient = RIGHT, $fn = 6);
+        }
+        color(colored ? "red" : undef)
+            right(xo) cuboid([3, vm_switch_cover_l, vm_switch_cover_w], anchor = LEFT, rounding = 1, edges = "X");
+        color(colored ? [1, 0, 0, 0.35] : undef)
+            right(xo + 3)
+                difference() {
+                    cuboid([vm_switch_cover_h - 3, vm_switch_cover_l - 2, vm_switch_cover_w - 2], anchor = LEFT, rounding = 2, edges = [RIGHT]);
+                    left(0.01) cuboid([vm_switch_cover_h - 4.5, vm_switch_cover_l - 4, vm_switch_cover_w - 4], anchor = LEFT);
+                }
+        color(colored ? "silver" : undef)
+            right(xo + 3) yrot(90) zrot(0) xrot(-15) cyl(d1 = 5, d2 = 4, h = 18, anchor = BOTTOM);
+    }
+}
+
 // Swept ring of the IR receiver.
 module asm_ir_receiver_envelope() {
     z0 = vm_ir_rx_tip_z();

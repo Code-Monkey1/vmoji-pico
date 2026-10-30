@@ -3,6 +3,7 @@
 // Printed skirt under the floor clears the M8 SHCS head so the base sits flush/stable.
 // Motors press into the wells from above (no collets, no clamp screws); their terminals
 // and wires drop through the well ledge into the skirt and run to the box floor slots.
+// Box: 12V jack cradle on the +Y wall, power switch on the +X wall (layout in common).
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
 include <BOSL2/gears.scad>
@@ -15,12 +16,11 @@ wire_slot_w = 8; // [2:0.5:10]
 ear_w = 12; // [8:0.5:20]
 ear_stick = 8; // [4:0.5:16]
 switch_cutout_d = 12.4; // [8:0.1:40]
-switch_body_depth = 30; // [10:0.5:40]
-cable_hole_d = 9; // [4:0.5:16]
+cable_hole_d = 9; // [4:0.5:16] Male plug barrel through the wall into the jack.
 mount_screw = "M3";
 teardrop_holes = true; // [true, false]
 // Notch at the top of the box wall facing the deck (TX coil + IR emitter leads).
-deck_wire_notch_w = 12; // [6:0.5:30]
+// Its width spans the TX lead groove to the IR emitter (derived in the module).
 deck_wire_notch_h = 8; // [3:0.5:20]
 
 
@@ -41,7 +41,6 @@ module motor_base(
     ear_w = ear_w,
     ear_stick = ear_stick,
     switch_cutout_d = switch_cutout_d,
-    switch_body_depth = switch_body_depth,
     cable_hole_d = cable_hole_d,
     mount_screw = mount_screw,
     post_d = vm_post_d,
@@ -90,8 +89,17 @@ module motor_base(
         [porch_x1, -(porch_outer_y / 2 - ear_w / 2)]
     ];
 
+    jack_x = mb_jack_x(layout);
+    // Motor wire floor slots (box side).
+    slot_x = porch_x0 + wall_t + 3;
+    slot_sx = max(wire_slot_w + 4, 10);
+    slot_sy = wire_slot_w + 6;
+    notch_y0 = vm_tx_wire_y - vm_tx_wire_w / 2 - 1;
+    notch_y1 = mb_ir_xy().y + 3;
+
     vm_assert_layout();
-    assert(porch_inner_x > switch_body_depth + 5, "porch too shallow for switch");
+    assert(jack_x - mb_jack_half_x() > slot_x + slot_sx / 2 + 1,
+        "12V jack cradle covers a motor wire floor slot");
     assert(skirt_h > 0, "skirt_h must be positive for flush underside");
 
     diff() {
@@ -310,29 +318,23 @@ module motor_base(
             // Top notch in the same wall for the TX coil + IR emitter leads (under the lid).
             up(porch_h - deck_wire_notch_h)
                 right(porch_x0 - eps)
-                    back(vm_tx_wire_y / 2)
+                    back(notch_y0)
                         cuboid(
-                            [wall_t + 2 * eps, deck_wire_notch_w, deck_wire_notch_h + eps],
-                            anchor = LEFT + BOTTOM
+                            [wall_t + 2 * eps, notch_y1 - notch_y0, deck_wire_notch_h + eps],
+                            anchor = LEFT + FRONT + BOTTOM
                         );
 
-            up(floor_h + porch_inner_z / 3)
-                right(porch_x1)
-                    cyl(
-                        d = switch_cutout_d,
-                        h = wall_t + 10,
-                        orient = RIGHT
-);
+            // Power switch, centered in Y, above the jack cradle.
+            translate([porch_x1, mb_switch_y(), mb_switch_z()])
+                cyl(
+                    d = switch_cutout_d,
+                    h = wall_t + 10,
+                    orient = RIGHT
+                );
 
-            up(7 + floor_h + porch_inner_z / 2)
-                right(porch_x0 + wall_t + porch_inner_x / 2)
-                    back(porch_outer_y / 2)
-                        cyl(
-                            d = cable_hole_d,
-                            h = wall_t + 10,
-                            anchor = CENTER,
-                            orient = BACK
-                        );
+            // 12V jack: front recess in the +Y wall + male plug hole.
+            translate([jack_x, mb_jack_front_y(), floor_h])
+                mb_jack_wall_cuts(cable_hole_d, eps);
 
             // Lid posts: M3 heat-set inserts from the top (screws go down through the lid).
             for (p = post_coords)
@@ -353,6 +355,11 @@ module motor_base(
                         );
             }
         }
+
+        // 12V jack cradle on the box floor (kept: the box interior cut would remove it).
+        tag("keep")
+            translate([jack_x, mb_jack_front_y(), floor_h])
+                mb_jack_cradle(eps);
     }
 }
 

@@ -80,6 +80,8 @@ vm_bearing_lip_id = 16.8;
 vm_top_bearing_lip_id = 19.5;
 // Steel top bearing top face → TX coil bottom face. Hard floor asserted at 4 mm.
 vm_top_bearing_coil_clear = 10; // [4:0.5:20]
+// Deck boss + pocket bore run this far below the top 608 (hides the bearing and the collar gap).
+vm_top_bearing_skirt = 2.5;
 
 /* ---- M8 stud (SHCS + race spacers + nut) ---- */
 // DIN 912 / ISO 4762 M8: head Ø13 x 8. ISO 4032 M8 nut: 13 AF x 6.5.
@@ -105,7 +107,14 @@ vm_nut_socket_extra = 0.3; // Across-flats clearance: hex only drives, it does n
 vm_tip_bore_extra = 0.07; // Snug bore on the M8 tip crest: this centers the rotor.
 vm_tip_bore_headroom = 0.5; // Above the screw tip.
 vm_rotor_collar_d = 11; // Shoulder above the gear; < inner race OD so it never touches shields.
-vm_rotor_collar_gap = 0.5; // Collar top → top 608 inner race (rotor captive, not over-constrained).
+// The collar flares from this at the gear top to vm_rotor_collar_d at its top. A straight Ø11
+// collar around the Ø8 tip bore left a 1.5 mm tube right above the gear (a printed shaft snapped
+// near its base when taken off the bed).
+vm_rotor_collar_base_d = 16;
+// Collar top → top 608 inner race (rotor captive, not over-constrained). 0.5 crushed the printed
+// v2: nut / bearing / column tolerances stacked up and the collar clamped the inner race against
+// the deck lip. The rotor rests on the nut by its own weight (helix lift is far below it).
+vm_rotor_collar_gap = 3;
 // Snug slide into the top 608 inner race (tune with fit-test.scad). Must slide on by hand: a press
 // fit pushes the race through the balls and over-constrains the rotor against the deck spigots.
 // Coupon: 8.05 slides with slight wobble. 8.10 is a press fit.
@@ -123,8 +132,9 @@ vm_ring_id = 21.5;
 vm_ring_od = 41;
 vm_ring_h = 1.2;
 vm_ring_fit = 0.6; // Diametral clearance of the ring rebates.
-// Face-to-face air gap between TX top and RX bottom. Hardware needs 8–20 mm; prefer 8.
-vm_coil_gap = 8; // [8:0.5:20]
+// Face-to-face air gap between TX top and RX bottom. Hardware works at 8–20 mm, but 8 overheated
+// the TX coil on the first build and 12 made the rotor too tall: 10 mm is the floor (asserted).
+vm_coil_gap = 10; // [10:0.5:20]
 
 /* ---- TX deck ---- */
 vm_deck_plate_t = 3; // Plastic under the TX ring.
@@ -132,7 +142,7 @@ vm_ring_rebate_extra = 0.3; // Rebate depth beyond ring_h.
 vm_deck_shaft_clear_d = 10;
 vm_deck_boss_wall = 2.5; // Around the top 608 pocket.
 vm_tx_wire_y = -12; // TX lead groove runs to the +X edge at this Y.
-vm_tx_wire_w = 3;
+vm_tx_wire_w = 7.5; // 3 was too narrow for the coil leads.
 
 /* ---- Rotor head (RX coil + PCB) ---- */
 vm_rx_recess = 0.2; // RX copper face sits this far inside the head underside.
@@ -141,7 +151,11 @@ vm_head_over_coil = 3; // Plastic above the RX coil.
 vm_head_hub_d = 14;
 vm_head_ceiling_t = 1.5; // Socket ceiling under the center screw head.
 vm_center_screw_head_h = 3; // M3 SHCS head sits on the hub, under the PCB.
+// Extra standoff (taller PCB corner bosses): keeps the PCB components out of the RX coil field.
+vm_pcb_rx_extra = 3;
+// RX lead exit: rounded slot along the coil (radial width x tangential length). Ø3.5 was too tight.
 vm_rx_wire_d = 3.5;
+vm_rx_wire_len = 8.75;
 vm_rx_wire_angle = 90;
 vm_glue_notch_n = 3;
 vm_glue_notch_w = 3;
@@ -174,6 +188,9 @@ vm_ir_flange_d = 5.8; // 3 mm parts: ~3.8
 vm_ir_flange_h = 1;
 vm_ir_len = 8.6; // Flange bottom → dome tip. 3 mm parts: ~5.3
 vm_ir_hole_extra = 0.2;
+// Receiver: a ~5x5 mm package (5x6 with the pins bent up), glued face-down on its boss top over
+// this hole. Also used for the balancing dummy hole. The emitter keeps vm_ir_d + vm_ir_hole_extra.
+vm_ir_rx_hole_d = 6.1;
 vm_ir_r = 27;
 vm_ir_angle = 0;
 vm_ir_tx_protrude = 1.5; // Emitter dome above the deck top.
@@ -186,11 +203,44 @@ vm_wall_t = 3;
 vm_deck_margin = 4;
 vm_porch_inner_x = 50;
 vm_porch_inner_y = 72;
-vm_porch_inner_z = 32;
+vm_porch_inner_z = 37; // 32 had no room for the 12V jack under the switch.
 vm_porch_gap = 3; // Electronics box wall ↔ TX deck edge (lid stays removable).
 vm_post_d = 9; // Lid posts (insert bosses).
 vm_lid_t = 2.5;
 vm_col_d = 12;
+
+/* ---- Electronics box: 12V jack cradle + power switch ---- */
+// DAYKIT 2.1x5.5 female screw-terminal adapter (listing: 41 x 14 x 13), wires out the back,
+// screws on top. It enters the +Y wall at the box X center, low, and runs under the switch.
+// Its front sits in a recess in the
+// wall (pull-out stop, deeper plug engagement); a backstop behind it takes the insertion force
+// (hot glue alone let it back away). Drop it in from the top, zip-tie through the riser.
+vm_jack_l = 41;
+vm_jack_w = 14;
+vm_jack_h = 13;
+vm_jack_fit = 0.6; // Clearance on each of l / w / h (tune with the `jack` coupon).
+vm_jack_wall_left = 1.2; // Wall left between the recess and the outside (male plug side).
+vm_jack_lift = 3; // Riser under the jack (zip-tie tunnel runs through it).
+vm_jack_cheek_t = 2.5;
+vm_jack_cheek_h = 6; // Side cheeks above the riser (screw terminals stay reachable).
+vm_jack_stop_t = 3;
+vm_jack_wire_slot_w = 8; // Wire exit through the backstop.
+vm_jack_tie_w = 5; // Zip-tie tunnel through the riser.
+vm_jack_tie_h = 2;
+vm_jack_tie_y = 8; // Tunnel center from the jack front face.
+// DaierTek 20A lit toggle with flip cover (Ø12 panel hole), centered on the +X wall (Y = 0),
+// above the jack. Keep-out box behind the panel (measured): body 28 (Y) x 16 (Z) x 24 deep,
+// 34 deep with the spade crimps. The layout asserts check the rest.
+vm_switch_body_w = 28; // Y
+vm_switch_body_h = 16; // Z
+vm_switch_body_depth = 24;
+vm_switch_conn_depth = 10; // Spade crimps behind the terminals.
+vm_switch_jack_gap = 2; // Switch keep-out bottom above the cradle / jack top.
+// Outside the box (preview ghost only, approximate): bushing + nut + red flip cover.
+vm_switch_bushing_d = 12;
+vm_switch_cover_l = 28;
+vm_switch_cover_w = 16;
+vm_switch_cover_h = 30;
 
 /* ---- Heat-set inserts (M3, Ø4.2) ---- */
 // Brass inserts want metal M3 screws. Pilot = vm_insert_hole_d + 2*$slop (proven with yours).
@@ -252,7 +302,7 @@ function vm_head_rx_top() = vm_rx_recess + vm_ring_h;
 function vm_head_disk_top() = vm_head_rx_top() + vm_head_over_coil;
 function vm_head_disk_d() = vm_ring_od + 4;
 function vm_head_hub_top() = vm_key_len + vm_head_ceiling_t;
-function vm_head_pcb_z() = vm_head_hub_top() + vm_center_screw_head_h + 0.5;
+function vm_head_pcb_z() = vm_head_hub_top() + vm_center_screw_head_h + 0.5 + vm_pcb_rx_extra;
 function vm_rotor_top_z() = vm_head_z() + vm_key_len; // Shaft top face seats on the socket ceiling.
 function vm_key_z0() = vm_head_z() - 0.5;
 function vm_pcb_z() = vm_head_z() + vm_head_pcb_z();
@@ -279,7 +329,7 @@ module vm_assert_coil_gap_metal_free() {
         "Top 608 closer than 4 mm to the TX coil — no room for plastic, heavy coupling"
     );
     assert(
-        vm_coil_gap >= 8 && vm_coil_gap <= 20,
-        "TX–RX coil face gap must stay in 8–20 mm"
+        vm_coil_gap >= 10 && vm_coil_gap <= 20,
+        "TX–RX coil face gap must stay in 10–20 mm (8 overheated the TX coil)"
     );
 }

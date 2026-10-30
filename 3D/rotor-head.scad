@@ -1,9 +1,10 @@
 // Rotor head — RX coil holder + 40x60 PCB mount, keyed on the rotor-shaft double-D.
 // Underside: open RX coil rebate (coil drops in from below, copper facing the TX coil),
-// hot-glue notches and a lead hole up to the PCB. Top: 4 M3 heat-set insert bosses under
+// hot-glue notches and a lead slot up to the PCB. Top: 4 M3 heat-set insert bosses under
 // the PCB corner holes, center M3 screw into the shaft top, counterweight pockets (M3 nuts)
-// and the IR index receiver (phototransistor pointing down, flange on its boss; a matching
-// dummy hole on the opposite side keeps the head balanced). Print underside on the bed.
+// and the IR index receiver (small rectangular sensor glued face-down on its boss top, looking
+// down through the hole; a matching dummy hole on the opposite side keeps the head balanced).
+// Print underside on the bed.
 include <BOSL2/std.scad>
 include <BOSL2/gears.scad>
 include <vmoji-mech-params.scad>
@@ -31,12 +32,15 @@ module rotor_head() {
     hole_pts = [for (sx = [1, -1], sy = [1, -1]) [sx * vm_pcb_hole_dx / 2, sy * vm_pcb_hole_dy / 2]];
     ir_xy = mb_ir_xy();
     ir_pts = [ir_xy, -ir_xy];
-    ir_boss_d = vm_ir_flange_d + 3;
+    ir_boss_d = max(vm_ir_flange_d, vm_ir_rx_hole_d) + 3;
+    rx_wire_r = vm_ring_od / 2 - 1.5;
     cw_d = mb_hex_circum_d(vm_cw_nut_af + vm_cw_fit);
     m3_clear = vm_m3_clear_d + 2 * $slop;
 
     vm_assert_layout();
     assert(rebate_id > vm_head_hub_d + 2, "RX rebate cuts into the hub");
+    assert(norm([vm_rx_wire_len / 2, rx_wire_r + vm_rx_wire_d / 2]) < disk_d / 2 - 1,
+        "RX lead slot breaks out of the head disk");
     assert(vm_cw_r - cw_d / 2 > vm_head_hub_d / 2 + 1 && vm_cw_r + cw_d / 2 < rebate_od / 2,
         "Counterweight pockets must sit over the RX rebate, clear of the hub");
 
@@ -76,11 +80,14 @@ module rotor_head() {
                             [vm_glue_notch_d + 1, vm_glue_notch_w, rx_top + eps],
                             anchor = LEFT + BOTTOM
                         );
-            // RX leads up to the PCB.
+            // RX leads up to the PCB (rounded slot along the coil).
             zrot(vm_rx_wire_angle)
-                right(vm_ring_od / 2 - 1.5)
+                right(rx_wire_r)
                     down(eps)
-                        cyl(d = vm_rx_wire_d, h = disk_top + 2 * eps, anchor = BOTTOM);
+                        hull()
+                            for (s = [1, -1])
+                                back(s * (vm_rx_wire_len - vm_rx_wire_d) / 2)
+                                    cyl(d = vm_rx_wire_d, h = disk_top + 2 * eps, anchor = BOTTOM);
 
             // Double-D socket on the shaft key; shaft top face seats on the ceiling.
             down(eps)
@@ -103,10 +110,10 @@ module rotor_head() {
                 translate([p.x, p.y, pcb_z])
                     mb_insert_pilot(vm_insert_len_head, eps);
 
-            // IR receiver (+ balancing dummy): body hole, flange rests on the boss top.
+            // IR receiver (+ balancing dummy): sensor glued face-down on the boss top over this hole.
             for (p = ir_pts)
                 translate([p.x, p.y, -eps])
-                    cyl(d = vm_ir_d + vm_ir_hole_extra, h = vm_ir_rx_seat_z + 2 * eps, anchor = BOTTOM);
+                    cyl(d = vm_ir_rx_hole_d, h = vm_ir_rx_seat_z + 2 * eps, anchor = BOTTOM);
         }
     }
 }

@@ -27,6 +27,7 @@ show_coils = true; // [true, false]
 show_head = true; // [true, false]
 show_ir = true; // [true, false]
 show_display = true; // [true, false]
+show_power = true; // [true, false] 12V jack + switch in the box
 explode = 0; // [0:0.5:20]
 // Cut away the -Y half to see the stack (section at Y=0).
 section = false; // [true, false]
@@ -101,6 +102,11 @@ module _assembly() {
     if (show_display)
         up(explode * 2.2)
             asm_display(driven_a, colored = true);
+
+    if (show_power) {
+        asm_jack(colored = true);
+        asm_switch(colored = true);
+    }
 }
 
 

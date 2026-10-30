@@ -53,7 +53,7 @@ module rotor_shaft() {
                     thickness = gear_t
                 );
             up(gear_t - eps)
-                cyl(d = vm_rotor_collar_d, h = collar_top - gear_t + eps, anchor = BOTTOM);
+                cyl(d1 = vm_rotor_collar_base_d, d2 = vm_rotor_collar_d, h = collar_top - gear_t + eps, anchor = BOTTOM);
             up(collar_top - eps)
                 cyl(d = vm_top_journal_d, h = journal_top - collar_top + eps, anchor = BOTTOM, chamfer2 = 0.15);
             up(journal_top - eps)

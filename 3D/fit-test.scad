@@ -2,7 +2,7 @@
 // try them on the real hardware, then copy the winning value into vmoji-mech-params.scad.
 // Labels are the parameter value under test (engraved on the top face).
 // Pick one coupon with `coupon` (quick prints), or "all" for the full sheet
-// (~170 x 190 mm, fits a 220 bed).
+// (~170 x 190 mm, fits a 220 bed). The `jack` coupon is not on the sheet; print it alone.
 include <BOSL2/std.scad>
 include <BOSL2/gears.scad>
 include <vmoji-mech-params.scad>
@@ -10,7 +10,7 @@ include <motor-base-common.scad>
 
 
 /* [Coupon] */
-coupon = "all"; // [all, motor_shaft, journal, bearing_od, nut_socket, tip_bore, key, well, insert, locate, ir]
+coupon = "all"; // [all, motor_shaft, journal, bearing_od, nut_socket, tip_bore, key, well, insert, locate, ir, jack]
 motor_shaft_bores = [1.70, 1.75, 1.80, 1.85, 1.90, 1.95, 2.00];
 journal_ds = [8.10, 8.15, 8.20, 8.25];
 bearing_fits = [-0.05, 0.0, 0.05];
@@ -191,6 +191,29 @@ module coupon_ir() {
             }
 }
 
+// 12V jack cradle as in the base: wall slice with the front recess + plug hole, floor, cradle.
+// Tune vm_jack_fit (snug drop-in, no play toward the backstop) and the plug engagement.
+module coupon_jack(hole_d = 9) {
+    floor_t = 2;
+    w = 2 * mb_jack_half_x() + 4;
+    wall_in = vm_wall_t - vm_jack_wall_left;
+    end = mb_jack_slot_l() + vm_jack_stop_t;
+    wall_h = vm_jack_lift + mb_jack_slot_h() + 2;
+    up(floor_t) {
+        difference() {
+            union() {
+                translate([0, vm_jack_wall_left, -floor_t])
+                    cuboid([w, vm_wall_t, wall_h + floor_t], anchor = BACK + BOTTOM);
+                translate([0, -wall_in + eps, -floor_t])
+                    cuboid([w, end - wall_in + eps, floor_t + eps], anchor = BACK + BOTTOM);
+            }
+            mb_jack_wall_cuts(hole_d, eps);
+            translate([0, -wall_in, wall_h]) xrot(-90) _label(_fmt(vm_jack_fit));
+        }
+        mb_jack_cradle(eps);
+    }
+}
+
 // Sheet position of each coupon when printing "all".
 function _sheet_pos(name) =
     name == "insert" ? [-50, 80, 0] :
@@ -222,6 +245,7 @@ module fit_test(which = coupon) {
     _place("insert", which) coupon_insert();
     _place("locate", which) coupon_locate();
     _place("ir", which) coupon_ir();
+    if (which == "jack") coupon_jack();
 }
 
 

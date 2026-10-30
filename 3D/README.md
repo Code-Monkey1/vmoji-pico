@@ -26,7 +26,10 @@ print file includes that before `motor-base-common.scad`.
 | 1 | M3×10 SHCS | Head center screw, self-taps into the shaft top. |
 | 0–6 | M3 nuts | Counterweights (glued into the head pockets). |
 | 2 | RF-300C-class motors | Ø24 × 12, Ø2.0 shaft sticking out 4–5 mm (`vm_motor_shaft_len`). |
-| 1 | IR LED + 1 phototransistor | 5 mm by default (`vm_ir_d`, `vm_ir_flange_d`, `vm_ir_len` for 3 mm parts). |
+| 1 | IR LED + 1 IR receiver | LED: 5 mm by default (`vm_ir_d`, `vm_ir_flange_d`, `vm_ir_len` for 3 mm parts). Receiver: ~5×5 mm package, glued face-down over a Ø6.1 hole (`vm_ir_rx_hole_d`). |
+| 1 | 12V female jack (2.1×5.5, screw terminals) | DAYKIT adapter, 41 × 14 × 13 mm (`vm_jack_*`). Sits in the box cradle. |
+| 1 | 12V lit toggle switch | DaierTek 20A with flip cover, Ø12 panel hole. Inside the box: 28 (Y) × 16 (Z) × 24 mm, 34 with crimps (`vm_switch_*`). Centered on the +X wall, above the jack. |
+| 1 | Zip tie (≤ 4.5 mm wide) | Holds the jack in its cradle. |
 | 1 | 40 × 60 mm proto PCB | 4 M3 corner holes; set `vm_pcb_hole_dx/dy` to your board. |
 
 **Buy the stud screw:** [M8 hex-socket assortment (16/20/25/30)](https://www.amazon.ca/gp/product/B0GPXBPR31).
@@ -37,9 +40,12 @@ that's fine because the inner race is clamped by the stud, not sliding on it.
 
 ## Coil-safe rules
 
-- Face gap TX top → RX bottom: **8–20 mm** (`vm_coil_gap`, prefer 8).
+- Face gap TX top → RX bottom: **10–20 mm** (`vm_coil_gap`, 10). 8 mm overheated the TX coil; 12 made the rotor too tall.
 - The M8 stud tip stays below the TX deck (`vm_assert_coil_gap_metal_free`).
 - The top 608 stays `vm_top_bearing_coil_clear` below the TX coil (default 10 mm, hard floor 4 mm).
+- The rotor collar stays `vm_rotor_collar_gap` (3 mm) under the top 608 inner race. 0.5 mm crushed
+  the bearing between collar and deck lip on the first build. The deck boss runs
+  `vm_top_bearing_skirt` (2.5 mm) below the bearing to hide it.
 - No set-screw into the plastic rotor, no threads in plastic under load (hex + key drives).
 
 World **z=0** is the structural floor / bottom 608 bottom. Table contact is at
@@ -77,7 +83,7 @@ Everything prints in PLA. PLA softens around 55–60 °C and creeps under consta
 |------|------|--------------------|
 | Motor base | `motor-base.scad` | Skirt down on bed. Supports from the build plate inside the skirt (floor + well ledges bridge the hollow). |
 | TX deck | `motor-tx-deck.scad` | **Upside down** (coil face on bed): no overhangs, the bearing pocket opens upward. |
-| Rotor shaft | `rotor-shaft.scad` | Gear face down, axis vertical. Brim; 4+ perimeters (thin shaft). |
+| Rotor shaft | `rotor-shaft.scad` | Gear face down, axis vertical. Brim; 5+ perimeters, 100 % infill, print a bit hotter for layer bonding. Let the bed cool and lift it by the gear with a scraper: never lever it off by the shaft. |
 | Rotor head | `rotor-head.scad` | Underside (RX coil rebate) on bed. |
 | Pinions (×2) | `motor-pinion.scad` | Underside down; good cooling. |
 | Lid | `motor-base-lid.scad` | Top face on bed (lip up). |
@@ -110,11 +116,14 @@ Every step is top-down.
    drop into the deck recesses. Bolt it down with 4× M3×8. Route TX + IR leads into the box
    through the notch at the top of its wall.
 9. **Head:** hot-glue the RX coil into the rebate (glue into the three notches), leads up
-   through the lead hole. Drop the phototransistor into its hole from above (dome down,
-   flange on the boss).
+   through the lead slot. Bend the IR receiver's pins up, press it face-down onto its boss
+   over the hole and hot-glue it.
 10. Slide the head onto the double-D key and drive the M3×10 center screw (self-taps; snug only).
 11. Bolt the PCB with 4× M3×6; solder the RX leads and the phototransistor.
-12. Screw the lid on (4× M3×8).
+12. **Power:** jack first (it runs under the switch). Wire the 12V jack, drop it into its cradle
+    (front into the +Y wall recess, back against the backstop, wires through the backstop slot)
+    and zip-tie it through the tunnel in the riser. Then mount the switch in the +X wall and
+    crimp its leads. Screw the lid on (4× M3×8). `show_power` in the preview shows both.
 13. Balance (below).
 
 ## Balancing
@@ -143,7 +152,8 @@ Print `fit-test.scad`, try each coupon on the real part, then copy the winner he
 | `vm_well_rib_interf` | 0.10 | `well` | Crush-rib grip on the motor can (narrow rib tips). 0.15 with flat ribs was impossible to press in the base. The coupon now has the real well depth. |
 | `vm_insert_hole_d` | 3.9 | `insert` | Heat-set pilot (plus `$slop`). |
 | `vm_locate_fit` / `vm_locate_loose` | 0.15 / 0.8 | `locate` | Deck recesses on the column spigots (diagonal pair tight). |
-| `vm_ir_hole_extra` | 0.2 | `ir` | IR LED / phototransistor holes. |
+| `vm_ir_hole_extra` | 0.2 | `ir` | IR LED hole (the receiver uses `vm_ir_rx_hole_d`). |
+| `vm_jack_fit` | 0.6 | `jack` (printed alone) | 12V jack cradle + wall recess. Snug drop-in, no play toward the backstop; the plug must seat fully. |
 | `$slop` | 0.2 | — | Global print clearance (clearance holes). |
 
 The display ghost in the preview (60×40 PCB + 8×8 matrix) is approximate; the swept
@@ -152,11 +162,12 @@ volume check uses its envelope.
 ## Collision and assembly checks
 
 - **Analytic asserts** (`vm_assert_layout()` in `motor-base-common.scad`) run in every file:
-  box ↔ deck gap (`vm_porch_gap`, 3 mm), coil gaps, bearing-to-coil distance, metal below the
+  box ↔ deck gap (`vm_porch_gap`, 3 mm), 12V jack cradle ↔ switch keep-out ↔ lid posts, coil gaps, bearing-to-coil distance, metal below the
   coil zone, well ↔ bearing walls, gear ↔ column / well clearance, IR beam gap, insert boss walls, and more.
 - **Geometric checks:** `./check-collisions.sh` intersects every part pair as assembled
   (spinning parts as swept envelopes) plus a soldering-iron cylinder above every insert, and
-  fails on any real overlap. Takes ~5 min on OpenSCAD 2021; newer builds are faster with
+  fails on any real overlap. `base_jack`, `base_switch` and `jack_switch` check the jack ghost and the
+  switch keep-out box in the electronics box. Takes ~5 min on OpenSCAD 2021; newer builds are faster with
   `OPENSCAD_ARGS="--enable=manifold"`. Run a subset with `./check-collisions.sh base_deck coils`.
 
 ## File map

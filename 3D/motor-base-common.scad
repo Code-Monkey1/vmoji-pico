@@ -219,6 +219,86 @@ function mb_post_coords(layout = mb_layout(), post_d = vm_post_d) =
     )
     [[x0 + inset, py], [x0 + inset, -py], [x1 - inset, py], [x1 - inset, -py]];
 
+/* ---- Electronics box: 12V jack cradle + switch keep-out ---- */
+
+function mb_box_inner_x0(layout = mb_layout()) = mb_porch_x0(layout) + vm_wall_t;
+function mb_box_inner_x1(layout = mb_layout()) = mb_box_inner_x0(layout) + vm_porch_inner_x;
+// Jack frame: x = box X center, y = recess bottom (jack front face), z = box floor top.
+function mb_jack_x(layout = mb_layout()) = mb_box_inner_x0(layout) + vm_porch_inner_x / 2;
+function mb_jack_front_y() = vm_porch_inner_y / 2 + vm_wall_t - vm_jack_wall_left;
+function mb_jack_slot_w() = vm_jack_w + vm_jack_fit;
+function mb_jack_slot_h() = vm_jack_h + vm_jack_fit;
+function mb_jack_slot_l() = vm_jack_l + vm_jack_fit;
+function mb_jack_half_x() = mb_jack_slot_w() / 2 + vm_jack_cheek_t;
+// Jack axis height above the box floor (male plug hole).
+function mb_jack_axis_dz() = vm_jack_lift + mb_jack_slot_h() / 2;
+// Far end of the cradle (backstop back face), world Y.
+function mb_jack_end_y() = mb_jack_front_y() - mb_jack_slot_l() - vm_jack_stop_t;
+// Switch centered on the +X wall, its keep-out just above the jack cradle (which runs under it).
+function mb_switch_y() = 0;
+function mb_switch_z() =
+    vm_floor_h + vm_jack_lift + mb_jack_slot_h() + vm_switch_jack_gap + vm_switch_body_h / 2;
+function mb_switch_keepout_depth() = vm_switch_body_depth + vm_switch_conn_depth;
+
+// Clearance between an axis-aligned rectangle [[x0, y0], [x1, y1]] and a circle (negative = overlap).
+function mb_rect_circle_clear(r0, r1, c, rad) =
+    norm([max(r0.x - c.x, 0, c.x - r1.x), max(r0.y - c.y, 0, c.y - r1.y)]) - rad;
+
+// Cradle solids in the jack frame (jack runs toward -Y). Union with the box.
+module mb_jack_cradle(eps = 0.2) {
+    w = mb_jack_slot_w();
+    l = mb_jack_slot_l();
+    y_wall = -(vm_wall_t - vm_jack_wall_left); // Inner wall face.
+    difference() {
+        union() {
+            // Riser + cheeks from the inner wall face to the backstop.
+            translate([0, y_wall + eps, -eps])
+                cuboid(
+                    [w + 2 * vm_jack_cheek_t, l + y_wall + 2 * eps, vm_jack_lift + eps],
+                    anchor = BACK + BOTTOM
+                );
+            for (sx = [1, -1])
+                translate([sx * (w + vm_jack_cheek_t) / 2, y_wall + eps, -eps])
+                    cuboid(
+                        [vm_jack_cheek_t, l + y_wall + 2 * eps, vm_jack_lift + vm_jack_cheek_h + eps],
+                        anchor = BACK + BOTTOM
+                    );
+            // Backstop: takes the plug insertion force.
+            translate([0, -l, -eps])
+                cuboid(
+                    [w + 2 * vm_jack_cheek_t, vm_jack_stop_t, vm_jack_lift + mb_jack_slot_h() + eps],
+                    anchor = BACK + BOTTOM
+                );
+        }
+        // Wire exit through the backstop.
+        translate([0, -l + eps, vm_jack_lift])
+            cuboid([vm_jack_wire_slot_w, vm_jack_stop_t + 2 * eps, mb_jack_slot_h() + eps], anchor = BACK + BOTTOM);
+        // Zip-tie tunnel under the barrel end (tie goes up outside the cheeks, over the jack).
+        translate([0, -vm_jack_tie_y, -2 * eps])
+            cuboid([w + 2 * vm_jack_cheek_t + 2 * eps, vm_jack_tie_w, vm_jack_tie_h + 2 * eps], anchor = BOTTOM);
+    }
+}
+
+// Cuts in the +Y wall, jack frame: front recess + male plug hole.
+module mb_jack_wall_cuts(hole_d, eps = 0.2) {
+    translate([0, 0, vm_jack_lift])
+        cuboid([mb_jack_slot_w(), vm_wall_t - vm_jack_wall_left + eps, mb_jack_slot_h()], anchor = BACK + BOTTOM);
+    translate([0, -eps, mb_jack_axis_dz()])
+        cyl(d = hole_d, h = vm_jack_wall_left + 3 * eps, anchor = BOTTOM, orient = BACK);
+}
+
+// Jack ghost (world): front face on the recess bottom, sitting on the riser.
+module mb_jack_ghost(layout = mb_layout()) {
+    translate([mb_jack_x(layout), mb_jack_front_y(), vm_floor_h + vm_jack_lift])
+        cuboid([vm_jack_w, vm_jack_l, vm_jack_h], anchor = BACK + BOTTOM);
+}
+
+// Switch keep-out (world): body + crimps behind the +X wall.
+module mb_switch_keepout(layout = mb_layout()) {
+    translate([mb_box_inner_x1(layout), mb_switch_y(), mb_switch_z()])
+        cuboid([mb_switch_keepout_depth(), vm_switch_body_w, vm_switch_body_h], anchor = RIGHT);
+}
+
 function mb_ir_xy() = [vm_ir_r * cos(vm_ir_angle), vm_ir_r * sin(vm_ir_angle)];
 
 // Sweep radius of the head + PCB (corner of the rounded PCB rectangle).
@@ -230,7 +310,7 @@ function mb_head_sweep_r() =
 // Conservative solid of revolution covering every rotor-shaft angle (world Z).
 module mb_rotor_shaft_envelope() {
     up(vm_rotor_z0()) cyl(d = mb_gear_outer_d(vm_driven_teeth), h = vm_gear_thickness, anchor = BOTTOM);
-    up(vm_gear_z1()) cyl(d = vm_rotor_collar_d, h = vm_rotor_collar_z1() - vm_gear_z1(), anchor = BOTTOM);
+    up(vm_gear_z1()) cyl(d1 = vm_rotor_collar_base_d, d2 = vm_rotor_collar_d, h = vm_rotor_collar_z1() - vm_gear_z1(), anchor = BOTTOM);
     up(vm_rotor_collar_z1()) cyl(d = vm_top_journal_d, h = vm_journal_z1() - vm_rotor_collar_z1(), anchor = BOTTOM);
     up(vm_journal_z1()) cyl(d = vm_rotor_shaft_d, h = vm_rotor_top_z() - vm_journal_z1(), anchor = BOTTOM);
 }
@@ -269,6 +349,34 @@ module vm_assert_layout() {
     assert(vm_lid_top_z() < vm_head_z() - 1,
         "Box lid reaches the rotor head height");
 
+    // 12V jack cradle + switch keep-out inside the box.
+    jack_x = mb_jack_x(layout);
+    jack_r0 = [jack_x - mb_jack_half_x(), mb_jack_end_y()];
+    jack_r1 = [jack_x + mb_jack_half_x(), vm_porch_inner_y / 2];
+    sw_r0 = [mb_box_inner_x1(layout) - mb_switch_keepout_depth(), mb_switch_y() - vm_switch_body_w / 2];
+    sw_r1 = [mb_box_inner_x1(layout), mb_switch_y() + vm_switch_body_w / 2];
+    post_r = vm_post_d / 2 + 0.1;
+    assert(vm_porch_inner_x > mb_switch_keepout_depth() + 5, "porch too shallow for switch");
+    assert(min([for (p = mb_post_coords(layout)) mb_rect_circle_clear(jack_r0, jack_r1, p, post_r)]) >= 0.5,
+        "12V jack cradle hits a lid post");
+    assert(min([for (p = mb_post_coords(layout)) mb_rect_circle_clear(sw_r0, sw_r1, p, post_r)]) >= 0.5,
+        "Switch keep-out hits a lid post (measure the switch; widen vm_porch_inner_y)");
+    // The cradle runs under the switch: they must be apart in plan or in height.
+    assert(sw_r1.y <= jack_r0.y - vm_switch_jack_gap + 0.01 || sw_r0.x >= jack_r1.x + vm_switch_jack_gap
+            || mb_switch_z() - vm_switch_body_h / 2
+                >= vm_floor_h + vm_jack_lift + mb_jack_slot_h() + vm_switch_jack_gap - 0.01,
+        "Switch keep-out overlaps the 12V jack cradle");
+    assert(sw_r0.y >= -vm_porch_inner_y / 2 && sw_r1.y <= vm_porch_inner_y / 2,
+        "Switch keep-out runs past a box wall");
+    // 1.5 mm under the box top leaves room for the lid lip.
+    assert(mb_switch_z() - vm_switch_body_h / 2 > vm_floor_h
+            && mb_switch_z() + vm_switch_body_h / 2 <= vm_porch_top_z() - 1.5,
+        "Switch keep-out does not fit the box height (raise vm_porch_inner_z)");
+    assert(vm_floor_h + vm_jack_lift + mb_jack_slot_h() < vm_porch_top_z() - 1,
+        "12V jack sticks out of the box top");
+    assert(vm_jack_wire_slot_w < mb_jack_slot_w() - 4,
+        "Backstop wire slot leaves no shoulder for the jack to bear on");
+
     // M8 stud.
     assert(vm_skirt_h >= vm_shcs_head_h + vm_race_spacer_h + 0.5,
         "Skirt shorter than SHCS head + spacer — head would hit the table");
@@ -286,6 +394,8 @@ module vm_assert_layout() {
     // Rotor.
     assert(vm_rotor_collar_d < vm_bearing_inner_race_od - 0.5,
         "Rotor collar would touch the top 608 shields");
+    assert(vm_rotor_collar_base_d >= vm_rotor_collar_d && vm_rotor_collar_base_d < mb_gear_root_d(vm_driven_teeth) - 4,
+        "Collar flare must stay inside the gear roots");
     assert(vm_rotor_collar_d >= vm_shcs_d + vm_tip_bore_extra + 2.4,
         "Rotor collar wall around the tip bore too thin");
     assert(mb_hex_circum_d(vm_nut_af + vm_nut_socket_extra) + 4 < mb_gear_root_d(vm_driven_teeth),
@@ -312,8 +422,8 @@ module vm_assert_layout() {
         "Column collides with a motor well / pinion");
 
     // Top bearing + deck.
-    assert(vm_top_bearing_z0() > vm_gear_z1() + 1,
-        "Top 608 boss reaches the gear plane");
+    assert(vm_top_bearing_z0() - vm_top_bearing_skirt > vm_gear_z1() + 1,
+        "Top 608 boss (with its skirt) reaches the gear plane");
     assert(vm_top_bearing_lip_id > vm_rotor_collar_d + 1 && vm_top_bearing_lip_id < vm_bearing_od - 1.5,
         "Top 608 lip must clear the rotor and still hold the outer race");
     assert(vm_deck_shaft_clear_d > vm_rotor_shaft_d + 1,
@@ -342,7 +452,7 @@ module vm_assert_layout() {
     // IR index sensor.
     assert(vm_ir_r - ir_boss_r > vm_ring_od / 2 + vm_ring_fit + 1,
         "IR sensor overlaps the coil rebates");
-    assert(vm_ir_r - vm_ir_d / 2 > vm_head_disk_d() / 2 + 0.5,
+    assert(vm_ir_r - vm_ir_rx_hole_d / 2 > vm_head_disk_d() / 2 + 0.5,
         "IR receiver hole cuts into the RX disk");
     assert(vm_ir_r + ir_boss_r < deck_half_x,
         "IR emitter outside the TX deck");

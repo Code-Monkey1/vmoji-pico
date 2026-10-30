@@ -38,6 +38,7 @@ module motor_tx_deck(mount_screw = mount_screw) {
     ring_z = vm_tx_ring_z() - dz;
     tb_z0 = vm_top_bearing_z0() - dz;
     tb_z1 = vm_top_bearing_z1() - dz;
+    skirt_z0 = tb_z0 - vm_top_bearing_skirt; // Boss bottom, below the bearing (hides it).
     boss_d = bearing_pocket_d + 2 * vm_deck_boss_wall;
     rebate_od = vm_ring_od + vm_ring_fit;
     island_d = vm_ring_id - vm_ring_fit;
@@ -63,9 +64,9 @@ module motor_tx_deck(mount_screw = mount_screw) {
                 edges = "Z"
             );
 
-            // Hanging boss around the top 608.
-            up(tb_z0)
-                cyl(d = boss_d, h = -tb_z0 + eps, anchor = BOTTOM, chamfer1 = 0.6);
+            // Hanging boss around the top 608, with a skirt below it.
+            up(skirt_z0)
+                cyl(d = boss_d, h = -skirt_z0 + eps, anchor = BOTTOM, chamfer1 = 0.6);
 
             // IR emitter boss (only if the LED needs more depth than the plate).
             if (ir_boss_z0 < 0)
@@ -76,8 +77,8 @@ module motor_tx_deck(mount_screw = mount_screw) {
         tag("remove") {
             // Top 608 pocket (pressed in from below) + bore above the outer-race lip.
             down(eps)
-                up(tb_z0)
-                    cyl(d = bearing_pocket_d, h = vm_bearing_h + eps, anchor = BOTTOM, chamfer1 = -0.5);
+                up(skirt_z0)
+                    cyl(d = bearing_pocket_d, h = tb_z1 - skirt_z0 + eps, anchor = BOTTOM, chamfer1 = -0.5);
             up(tb_z1 - eps / 2)
                 cyl(d = vm_top_bearing_lip_id, h = -tb_z1 + eps, anchor = BOTTOM);
             down(eps / 2)
