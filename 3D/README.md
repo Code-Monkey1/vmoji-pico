@@ -154,6 +154,8 @@ Print `fit-test.scad`, try each coupon on the real part, then copy the winner he
 | `vm_locate_fit` / `vm_locate_loose` | 0.15 / 0.8 | `locate` | Deck recesses on the column spigots (diagonal pair tight). |
 | `vm_ir_hole_extra` | 0.2 | `ir` | IR LED hole (the receiver uses `vm_ir_rx_hole_d`). |
 | `vm_jack_fit` | 0.6 | `jack` (printed alone) | 12V jack cradle + wall recess. Snug drop-in, no play toward the backstop; the plug must seat fully. |
+| `vm_ring_fit_od` / `vm_ring_fit_id` | 2.1 / 1.6 | — (real coils) | Diametral clearance of the coil rebates (OD / island). 0.6 all round was too tight. |
+| `vm_ring_rebate_extra` / `vm_rx_rebate_extra` | 0.8 / 0.5 | — (real coils) | Extra rebate depth (TX deck / rotor head). Added plastic on top, floors and walls unchanged. |
 | `$slop` | 0.2 | — | Global print clearance (clearance holes). |
 
 The display ghost in the preview (60×40 PCB + 8×8 matrix) is approximate; the swept

@@ -259,14 +259,16 @@ The same walk runs headless:
 .venv/bin/python walk_pixels.py --port /dev/ttyACM0 --delay 0.3
 ```
 
-### Tests
+### Tests and lint
 
 ```bash
 cd tools/dashboard
 .venv/bin/python -m pytest tests -q
+.venv/bin/ruff check .
 ```
 
-86 tests, no hardware required.
+107 tests, no hardware required. Both pytest and ruff come from `requirements.txt`;
+the lint rules are in `ruff.toml`.
 
 The protocol tests cover the cross-language vectors, frames split byte-by-byte
 across reads, resynchronisation past a boot banner, CRC rejection and recovery,

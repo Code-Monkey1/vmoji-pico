@@ -428,7 +428,7 @@ module vm_assert_layout() {
         "Top 608 lip must clear the rotor and still hold the outer race");
     assert(vm_deck_shaft_clear_d > vm_rotor_shaft_d + 1,
         "Deck shaft hole too tight");
-    assert(vm_deck_shaft_clear_d < vm_ring_id - vm_ring_fit - 2,
+    assert(vm_deck_shaft_clear_d < vm_ring_rebate_id() - 2,
         "Deck shaft hole cuts into the TX ring island");
     assert(vm_locate_fit < m3_clear - 3 && vm_locate_loose < 2 * (m3_clear - 3),
         "Locating spigots must be tighter than the screw clearance");
@@ -450,7 +450,7 @@ module vm_assert_layout() {
         "Insert boss too thin (column / post)");
 
     // IR index sensor.
-    assert(vm_ir_r - ir_boss_r > vm_ring_od / 2 + vm_ring_fit + 1,
+    assert(vm_ir_r - ir_boss_r > vm_ring_rebate_od() / 2 + 1,
         "IR sensor overlaps the coil rebates");
     assert(vm_ir_r - vm_ir_rx_hole_d / 2 > vm_head_disk_d() / 2 + 0.5,
         "IR receiver hole cuts into the RX disk");

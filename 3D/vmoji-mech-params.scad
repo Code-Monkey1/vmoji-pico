@@ -131,21 +131,29 @@ vm_center_pilot_depth = 10;
 vm_ring_id = 21.5;
 vm_ring_od = 41;
 vm_ring_h = 1.2;
-vm_ring_fit = 0.6; // Diametral clearance of the ring rebates.
+// Diametral clearance of the ring rebates (TX deck + rotor head). 0.6 all round was too small for
+// the real coils: the rebate OD grew 1.5 mm and the island shrank 1 mm.
+vm_ring_fit_od = 2.1;
+vm_ring_fit_id = 1.6;
 // Face-to-face air gap between TX top and RX bottom. Hardware works at 8–20 mm, but 8 overheated
 // the TX coil on the first build and 12 made the rotor too tall: 10 mm is the floor (asserted).
 vm_coil_gap = 10; // [10:0.5:20]
 
 /* ---- TX deck ---- */
 vm_deck_plate_t = 3; // Plastic under the TX ring.
-vm_ring_rebate_extra = 0.3; // Rebate depth beyond ring_h.
+// Rebate depth beyond ring_h. 0.3 was too shallow for the real coil. The floor (and the plate under
+// the coil) stays put: extra depth raises the deck top, so the deck gets thicker, never thinner.
+vm_ring_rebate_extra = 0.8;
 vm_deck_shaft_clear_d = 10;
 vm_deck_boss_wall = 2.5; // Around the top 608 pocket.
 vm_tx_wire_y = -12; // TX lead groove runs to the +X edge at this Y.
 vm_tx_wire_w = 7.5; // 3 was too narrow for the coil leads.
 
 /* ---- Rotor head (RX coil + PCB) ---- */
-vm_rx_recess = 0.2; // RX copper face sits this far inside the head underside.
+vm_rx_recess = 0.2; // Nominal (vm_ring_h) RX copper face sits this far inside the head underside.
+// Rebate depth beyond recess + ring_h (the real coil did not fit). The underside stays put: the
+// ceiling and the disk top move up together, so the plastic above the coil keeps its thickness.
+vm_rx_rebate_extra = 0.5;
 vm_head_over_coil = 3; // Plastic above the RX coil.
 // The PCB-footprint plate runs from the head underside to the disk top (prints flat).
 vm_head_hub_d = 14;
@@ -289,6 +297,9 @@ function vm_rotor_collar_z1() = max(vm_gear_z1(), vm_tip_bore_top_z() + 1.5);
 function vm_top_bearing_z0() = vm_rotor_collar_z1() + vm_rotor_collar_gap;
 function vm_top_bearing_z1() = vm_top_bearing_z0() + vm_bearing_h;
 function vm_journal_z1() = vm_top_bearing_z1() + 0.5;
+// Ring rebates (TX deck + rotor head): rebate OD and island diameter.
+function vm_ring_rebate_od() = vm_ring_od + vm_ring_fit_od;
+function vm_ring_rebate_id() = vm_ring_id - vm_ring_fit_id;
 function vm_tx_ring_z() = vm_top_bearing_z1() + vm_top_bearing_coil_clear;
 function vm_tx_ring_top_z() = vm_tx_ring_z() + vm_ring_h;
 function vm_deck_z() = vm_tx_ring_z() - vm_deck_plate_t; // Plate underside = column tops.
@@ -298,9 +309,9 @@ function vm_tx_deck_z() = vm_deck_z();
 function vm_rx_ring_z() = vm_tx_ring_top_z() + vm_coil_gap;
 function vm_head_z() = vm_rx_ring_z() - vm_rx_recess; // Head underside (world).
 // Head-local heights.
-function vm_head_rx_top() = vm_rx_recess + vm_ring_h;
+function vm_head_rx_top() = vm_rx_recess + vm_ring_h + vm_rx_rebate_extra;
 function vm_head_disk_top() = vm_head_rx_top() + vm_head_over_coil;
-function vm_head_disk_d() = vm_ring_od + 4;
+function vm_head_disk_d() = vm_ring_rebate_od() + 3.4; // 1.7 mm wall around the RX rebate.
 function vm_head_hub_top() = vm_key_len + vm_head_ceiling_t;
 function vm_head_pcb_z() = vm_head_hub_top() + vm_center_screw_head_h + 0.5 + vm_pcb_rx_extra;
 function vm_rotor_top_z() = vm_head_z() + vm_key_len; // Shaft top face seats on the socket ceiling.

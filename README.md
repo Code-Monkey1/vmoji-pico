@@ -54,6 +54,18 @@ For cross-debugging, make sure you installed the appropriate tools:
 `sudo apt update`  
 `sudo apt install gdb-multiarch binutils-multiarch gcc-arm-none-eabi`  
 
+### Dashboard (host tools)
+
+The telemetry dashboard and the bring-up scripts run in their own venv. `requirements.txt`
+also brings in the test and lint tools (pytest, ruff):
+
+```bash
+cd tools/dashboard
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest tests -q
+.venv/bin/ruff check .
+```
+
 
 ## Quick Start (VS Code)
 

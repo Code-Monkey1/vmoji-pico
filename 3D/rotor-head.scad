@@ -26,8 +26,8 @@ module rotor_head() {
     plate_z0 = 0;
     hub_top = vm_head_hub_top();
     pcb_z = vm_head_pcb_z();
-    rebate_od = vm_ring_od + vm_ring_fit;
-    rebate_id = vm_ring_id - vm_ring_fit;
+    rebate_od = vm_ring_rebate_od();
+    rebate_id = vm_ring_rebate_id();
     boss_d = max(9, vm_insert_boss_min_d());
     hole_pts = [for (sx = [1, -1], sy = [1, -1]) [sx * vm_pcb_hole_dx / 2, sy * vm_pcb_hole_dy / 2]];
     ir_xy = mb_ir_xy();
