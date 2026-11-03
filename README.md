@@ -1,87 +1,62 @@
-# vmoji-pico
-Volumetric Display for the Raspberry Pi Pico (RP2040).
+# vmoji
 
-Mechanical CAD (OpenSCAD dual-motor drive): [3D/README.md](3D/README.md).
+A small volumetric display built around a Raspberry Pi Pico (RP2040). An 8×8 LED matrix
+spins on a motor-driven rotor and lights the right pattern at each angle, so a 3D shape
+appears to float in the air (persistence of vision).
 
-## Firmware host tests
+![vmoji assembly, rendered from the OpenSCAD models](docs/images/assembly-preview.png)
 
-Logic tests run on the PC (no Pico SDK / board required):
+*The assembly as rendered from the OpenSCAD models. It gives a general idea of the
+project but may not stay exactly accurate: the models in [`3D/`](3D) are the source of
+truth.*
 
-```bash
-cmake -S tests/firmware -B build-host-tests
-cmake --build build-host-tests
-ctest --test-dir build-host-tests --output-on-failure
-```
+## Repository
 
-Manual sim/POV bring-up steps: [tests/firmware/acceptance/BRINGUP.md](tests/firmware/acceptance/BRINGUP.md).
+| Folder | Contents |
+|--------|----------|
+| [`vmoji/`](vmoji) | Firmware: C/C++ on the Pico SDK |
+| [`tests/firmware/`](tests/firmware) | Firmware logic tests that run on your PC |
+| [`tools/dashboard/`](tools/dashboard) | Desktop telemetry dashboard (Python, PySide6) |
+| [`3D/`](3D) | 3D-printable mechanics (OpenSCAD) |
+| [`docs/`](docs) | Documentation |
+| [`scripts/`](scripts) | Repo-wide helpers: `doctor.sh` (setup check), `check.sh` (all tests) |
 
-## Telemetry dashboard
+## Quick start
 
-The firmware streams binary telemetry at 10 Hz - measured scan rate, per-scan
-jitter, die temperature and the live framebuffer - to a PySide6 desktop
-dashboard that plots it in real time, logs it, and can replay a recording.
-
-See [tools/dashboard/README.md](tools/dashboard/README.md).
-
-![vmoji telemetry dashboard](tools/dashboard/docs/dashboard.png)
-
-The dashboard also runs against a built-in simulator, so no hardware is needed to
-try it:
+vmoji is developed on **Linux** (Ubuntu / Linux Mint). Other systems may work but are
+untested. First install the prerequisites: see [Getting started](docs/getting-started.md).
 
 ```bash
-cd tools/dashboard
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python app.py
+scripts/doctor.sh             # what is missing, and how to install it
+vmoji/scripts/setup-sdk.sh    # Pico SDK (once)
+vmoji/scripts/build.sh        # -> vmoji/build/vmoji.uf2
+vmoji/scripts/flash.sh        # over USB
 ```
 
-## Dev Env Setup
-
-We use the "Raspberry Pi Pico Project" extension in VS Code with a Linux PC.  
-With it, you can prepare the environment (install the "pico-sdk" SDK locally).  
-
-This [PDF guide](https://pip-assets.raspberrypi.com/categories/610-raspberry-pi-pico/documents/RP-008276-DS-1-getting-started-with-pico.pdf?disposition=inline) explains very well what to do.
-
-To let it run properly the commands it needs without any permission issue (without needing to always write `sudo`),
-the `/etc/udev/rules.d/99-picotool.rules` file was created with the following content:
-`SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", MODE="0666"`  
-
-After, reload the rules:  
-`sudo udevadm control --reload-rules`  
-`sudo udevadm trigger`  
-
-For cross-debugging, make sure you installed the appropriate tools:
-
-`sudo apt update`  
-`sudo apt install gdb-multiarch binutils-multiarch gcc-arm-none-eabi`  
-
-### Dashboard (host tools)
-
-The telemetry dashboard and the bring-up scripts run in their own venv. `requirements.txt`
-also brings in the test and lint tools (pytest, ruff):
+No hardware? The dashboard has a built-in simulator:
 
 ```bash
 cd tools/dashboard
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests -q
-.venv/bin/ruff check .
+.venv/bin/python app.py --sim
 ```
 
+![The telemetry dashboard, running on its simulator](docs/images/dashboard.png)
 
-## Quick Start (VS Code)
+Before committing, run `scripts/check.sh`.
 
-### Building
-From the extension, you can click "Compile Project".  
+## Documentation
 
-### Flashing by Copy/Paste
-If not in bootloader mode already, reconnect the Raspberry Pi Pico while pressing down on the bootloader button.  
-You should now see it as a "USB device" in your file explorer.  
-Copy/paste the build .uf2 output file into that USB device to flash the device.
-
-The device will restart automatically and run the program you flashed.
-
-### Flashing via SWD
-Using the debug probe, you can flash quickly via SWD. See the guide for detailed instructions.  
-This way you don't need to unplug and re-plug the raspberry pi each time, which is convenient.  
-
-
-
+| Guide | What it covers |
+|-------|----------------|
+| [Getting started](docs/getting-started.md) | Install everything, step by step |
+| [Architecture](docs/architecture.md) | How the display works, end to end, and a glossary |
+| [Firmware](docs/firmware.md) | Build, flash, test, and find your way around the code |
+| [Commands](docs/commands.md) | The text commands the board accepts |
+| [Telemetry](docs/telemetry.md) | The binary telemetry protocol |
+| [Dashboard](docs/dashboard.md) | Running and extending the desktop dashboard |
+| [Bring-up](docs/bring-up.md) | Checklist for a freshly flashed or assembled board |
+| [Mechanics](docs/mechanics.md) | The OpenSCAD design: parameters, rules, checks |
+| [Printing](docs/printing.md) | Exporting STLs, print settings, fit tuning |
+| [Assembly](docs/assembly.md) | Parts list, assembly order, balancing |
+| [Troubleshooting](docs/troubleshooting.md) | Common problems and their fixes |

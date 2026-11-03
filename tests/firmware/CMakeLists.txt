@@ -63,3 +63,12 @@ add_executable(protocol_selftest ${CMAKE_CURRENT_LIST_DIR}/../../tools/protocol_
 target_include_directories(protocol_selftest PRIVATE ${VMOJI_ROOT})
 target_compile_options(protocol_selftest PRIVATE -Wall -Wextra)
 add_test(NAME protocol_selftest COMMAND protocol_selftest)
+
+# The committed vectors are what the Python tests decode. If the C++ wire format
+# changes, this fails until tools/update-protocol-vectors.sh regenerates them,
+# which in turn makes the Python tests fail until protocol.py agrees.
+add_test(NAME protocol_vectors_current
+    COMMAND ${CMAKE_COMMAND}
+        -DSELFTEST=$<TARGET_FILE:protocol_selftest>
+        -DVECTORS=${CMAKE_CURRENT_LIST_DIR}/../../tools/protocol_vectors.txt
+        -P ${CMAKE_CURRENT_LIST_DIR}/check_vectors.cmake)

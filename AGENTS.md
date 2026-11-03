@@ -1,40 +1,52 @@
 # AGENTS.md
 
+Linux-only project. Human documentation lives in [`docs/`](docs); read the relevant guide
+before changing an area. Start with [`docs/architecture.md`](docs/architecture.md).
+
 ## Layout
 
-- `vmoji/`: RP2040 firmware (C/C++, Pico SDK). Dual-core: core 0 handles commands, telemetry and
-  rotation sync; core 1 runs the PIO-paced LED scan.
+- `vmoji/`: RP2040 firmware (C/C++, Pico SDK). Core 0 handles commands, telemetry, rotation
+  sync and volume bake, and scans the matrix in static mode. Core 1 runs the PIO-paced scan in
+  pov/sim mode. See `docs/firmware.md`.
 - `tests/firmware/`: host-side (PC) tests for the firmware logic, no SDK or board needed.
-- `tools/dashboard/`: PySide6 telemetry dashboard (see its README).
-- `3D/`: OpenSCAD mechanics (see `3D/README.md` for BOM, print and assembly notes).
+- `tools/dashboard/`: PySide6 telemetry dashboard. See `docs/dashboard.md`.
+- `3D/`: OpenSCAD mechanics. See `docs/mechanics.md`, `docs/printing.md`, `docs/assembly.md`.
+- `scripts/`: repo-wide helpers. `vmoji/scripts/` and `3D/scripts/` hold area-specific ones.
+  Every script has `--help`.
 
 ## Commands
 
-- Host firmware tests:
-  `cmake -S tests/firmware -B build-host-tests && cmake --build build-host-tests && ctest --test-dir build-host-tests --output-on-failure`
-  A single test: `ctest --test-dir build-host-tests -R <test_name>`.
-- Dashboard (from `tools/dashboard`, in its venv): `pytest` and `ruff check`.
-- CAD checks: `3D/scripts/check-collisions.sh [check ...]`. Slow (minutes); fails on real overlaps or
-  failed asserts.
-- STL export: `3D/scripts/export-stl.sh [part ...]`. With no args it regenerates all of `3D/stl/`
-  (gitignored) from the printed parts; fit-test only when named. 3D helper scripts live in `3D/scripts/`.
-- The firmware itself builds through the Pico VS Code extension's SDK setup, not a plain CLI
-  build. Don't expect to compile `vmoji/` standalone.
+- Everything before a commit: `scripts/check.sh` (firmware host tests, dashboard pytest + ruff,
+  doc links). Add `--cad` for the slow collision check.
+- Setup problems: `scripts/doctor.sh`.
+- One host test: `ctest --test-dir build-host-tests -R <test_name>` (after `scripts/check.sh`
+  has configured `build-host-tests`).
+- Firmware: `vmoji/scripts/build.sh` builds `vmoji/build/vmoji.uf2` from the CLI;
+  `vmoji/scripts/flash.sh` flashes it (needs a board). VS Code is optional.
+- CAD: `3D/scripts/check-collisions.sh [check ...]` (slow, minutes);
+  `3D/scripts/export-stl.sh [part ...]` regenerates the gitignored `3D/stl/`.
 
 ## Invariants that span files
 
-- Keep logic that must be testable free of the Pico SDK, behind platform hooks, and keep
-  hardware-touching code thin. New host tests are registered in `tests/firmware/CMakeLists.txt`.
-- The telemetry wire format has two independent implementations (C++ and Python). Change them
-  together and keep the shared test vectors passing.
+- Keep logic that must be testable free of the Pico SDK, behind injected hooks, and keep
+  hardware-touching code thin. New sources and host tests are registered in
+  `vmoji/CMakeLists.txt` and `tests/firmware/CMakeLists.txt` (see `docs/firmware.md`).
+- The telemetry wire format has two implementations (C++ and Python). Change them together:
+  regenerate `tools/protocol_vectors.txt` with `tools/update-protocol-vectors.sh` and keep the
+  tests passing (`docs/telemetry.md`).
 - OpenSCAD parts all derive from one shared params file. The layout asserts and the collision
   script are the safety net: don't weaken or bypass them to make a build pass.
 - Coil-safe rule: no metal in the TX-RX coil gap.
+- Versions (SDK, toolchain, picotool) are set only in `vmoji/CMakeLists.txt`; scripts read them
+  from there.
 
 ## Conventions
 
 - Never delete or strip comments unless explicitly asked. They record design intent, timing
   contracts and past pitfalls. Move them with the code and update them in place when behavior
   changes.
+- When behavior changes, update the matching page in `docs/` in the same change. In docs, name
+  the parameter, constant or file that holds a value instead of copying the value, so the docs
+  can't drift from the code.
 - Mechanical parts are printed in PLA; fit tolerances are tuned with the fit-test coupons, not
   guessed.
