@@ -252,6 +252,10 @@ Step with Prev/Next or let **Auto** advance on a timer. Score each LED from 0
 scoring moves to the next LED. **Export CSV...** writes
 `row,col,row_gpio,col_gpio,score` for all 64 pixels. Stop blanks the display.
 
+The board also loops this walk on its own from power-up (the firmware boot demo),
+so a freshly powered board shows it is alive. Connecting the dashboard leaves it
+running; the first display command (this panel, a glyph, Blank, ...) stops it.
+
 The same walk runs headless:
 
 ```bash

@@ -18,6 +18,11 @@
 //   V <id>          builtin volume (POV/sim)
 //   ?               report the current configuration
 //   I               report firmware version and unique board id
+//
+// Verbs that change what is shown (S G X B P M V) take the display over from
+// the boot demo first, even if their arguments are then rejected: the host has
+// made its intent plain. Queries and tuning (H D Z ? I) leave the demo running,
+// so a dashboard can connect (it sends I) and watch it.
 
 #ifndef VMOJI_COMMANDS_H
 #define VMOJI_COMMANDS_H
@@ -64,6 +69,8 @@ typedef struct {
     void (*send_identity)(void);
     void (*ack)(const char *text);
     void (*note_command)(bool accepted);
+    /** Called before a display-changing command runs; may be NULL. */
+    void (*host_takeover)(void);
 } CommandsDeps;
 
 /** Install deps used by feed_byte / dispatch. Call once at boot. */

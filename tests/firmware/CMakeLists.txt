@@ -18,6 +18,7 @@ add_library(vmoji_host_core STATIC
     ${VMOJI_ROOT}/scan_timing.c
     ${VMOJI_ROOT}/pov_service.c
     ${VMOJI_ROOT}/commands.c
+    ${VMOJI_ROOT}/boot_demo.c
 )
 target_include_directories(vmoji_host_core PUBLIC ${VMOJI_ROOT})
 target_compile_definitions(vmoji_host_core PUBLIC VMOJI_HOST_TEST=1)
@@ -52,6 +53,7 @@ vmoji_add_test(test_volume_codec unit/test_volume_codec.c)
 vmoji_add_test(test_rotation_estimator unit/test_rotation_estimator.c)
 vmoji_add_test(test_scan_timing unit/test_scan_timing.c)
 vmoji_add_test(test_commands unit/test_commands.c)
+vmoji_add_test(test_boot_demo unit/test_boot_demo.c)
 vmoji_add_test(test_ir_debounce unit/test_ir_debounce.c)
 vmoji_add_test(test_core1_cmd unit/test_core1_cmd.c)
 vmoji_add_test(test_busy_slot unit/test_busy_slot.c)

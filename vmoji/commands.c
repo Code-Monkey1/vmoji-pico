@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "board_pins.h"
+#include "boot_demo.h"
 #include "matrix.h"
 #include "telemetry_flags.h"
 #include "volumes_builtin.h"
@@ -131,6 +132,7 @@ void commands_init_default(void)
         .send_identity = telemetry_send_identity,
         .ack = telemetry_ack,
         .note_command = telemetry_note_command,
+        .host_takeover = boot_demo_stop, /* The host's display beats the boot demo. */
     };
     commands_set_deps(&d);
 }
@@ -346,22 +348,25 @@ static bool cmd_identity(const char *args, char *ack, size_t ack_size)
     return true;
 }
 
+/* `takes_display`: the verb changes what is shown, so it takes the display
+ * over from the boot demo before running (see commands.h). */
 static const struct {
     char verb;
     command_fn handle;
+    bool takes_display;
 } kCommands[] = {
-    {'S', cmd_score},
-    {'H', cmd_heartbeat},
-    {'G', cmd_glyph},
-    {'X', cmd_pixel},
-    {'D', cmd_dwell},
-    {'B', cmd_blank},
-    {'P', cmd_pause},
-    {'Z', cmd_reset_counters},
-    {'M', cmd_mode},
-    {'V', cmd_volume},
-    {'?', cmd_query},
-    {'I', cmd_identity},
+    {'S', cmd_score, true},
+    {'H', cmd_heartbeat, false},
+    {'G', cmd_glyph, true},
+    {'X', cmd_pixel, true},
+    {'D', cmd_dwell, false},
+    {'B', cmd_blank, true},
+    {'P', cmd_pause, true},
+    {'Z', cmd_reset_counters, false},
+    {'M', cmd_mode, true},
+    {'V', cmd_volume, true},
+    {'?', cmd_query, false},
+    {'I', cmd_identity, false},
 };
 
 void commands_dispatch_line(const char *line)
@@ -373,12 +378,18 @@ void commands_dispatch_line(const char *line)
     char ack[ACK_MAX];
     bool accepted = false;
     command_fn handler = NULL;
+    bool takes_display = false;
 
     for (size_t i = 0; i < count_of(kCommands); i++) {
         if (kCommands[i].verb == *line) {
             handler = kCommands[i].handle;
+            takes_display = kCommands[i].takes_display;
             break;
         }
+    }
+
+    if (takes_display && g_deps.host_takeover != NULL) {
+        g_deps.host_takeover();
     }
 
     if (handler != NULL) {

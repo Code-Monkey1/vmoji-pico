@@ -2,12 +2,13 @@
 //
 // This file is only the wiring. Core 0 owns commands, telemetry, rotation sync
 // and volume bake; core 1 runs the PIO-paced parallel GPIO scan. The loop below
-// is deliberately short enough to read in one go — scan (or POV service), drain
-// input, report, kick the watchdog — because that shape is the timing contract
-// the whole instrument is built to measure.
+// is deliberately short enough to read in one go — boot demo frame (if due),
+// scan (or POV service), drain input, report, kick the watchdog — because that
+// shape is the timing contract the whole instrument is built to measure.
 
 #include <stdio.h>
 
+#include "boot_demo.h"
 #include "commands.h"
 #include "hardware/watchdog.h"
 #include "matrix.h"
@@ -27,6 +28,15 @@
 
 /** Bytes taken from USB per pass, so a flood cannot monopolise the loop. */
 #define STDIO_DRAIN_LIMIT 128
+
+/* What the matrix plays from power-up until the host sends a display command
+ * (see commands.h). BOOT_DEMO_NONE boots dark. */
+static const BootDemoId kBootDemo = BOOT_DEMO_PIXEL_WALK;
+
+static const BootDemoDisplay kBootDemoDisplay = {
+    .draw_pixel = matrix_draw_pixel,
+    .clear = matrix_clear,
+};
 
 static void drain_uart_input(void)
 {
@@ -90,12 +100,18 @@ int main(void)
     telemetry_log("vmoji POV telemetry online");
     telemetry_send_identity();
 
+    boot_demo_start(kBootDemo, &kBootDemoDisplay, time_us_64());
+
     /* Pause while a debugger has the core halted, so single-stepping does not
      * look like a firmware hang and trigger a reset. */
     watchdog_enable(WATCHDOG_TIMEOUT_MS, true);
 
     while (true) {
         AppMode mode = pov_runtime_mode();
+
+        /* Only touches the framebuffer, at most once per frame period: the
+         * scan below keeps its timing. */
+        boot_demo_service(time_us_64());
 
         if (!commands_scan_paused()) {
             if (mode == APP_MODE_STATIC) {

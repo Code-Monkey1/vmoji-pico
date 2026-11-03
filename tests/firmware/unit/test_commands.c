@@ -20,6 +20,18 @@ static int g_glyph = -1;
 static int g_pixel_row = -1;
 static int g_pixel_col = -1;
 static int g_blank_count;
+/* Call order, so the takeover can be checked to come before the draw. */
+static int g_seq;
+static int g_takeover_count;
+static int g_takeover_at = -1;
+static int g_pixel_at = -1;
+static int g_glyph_at = -1;
+static int g_clear_at = -1;
+static int g_score_at = -1;
+static int g_volume_at = -1;
+static int g_mode_at = -1;
+static int g_pause_at = -1; /* P's first dep call is set_flag(PAUSED). */
+static CommandsDeps g_installed;
 
 static void feed_line(const char *line)
 {
@@ -47,6 +59,7 @@ static void stub_note(bool ok)
 static void stub_set_mode(AppMode m)
 {
     g_mode = m;
+    g_mode_at = ++g_seq;
 }
 static AppMode stub_get_mode(void)
 {
@@ -55,6 +68,7 @@ static AppMode stub_get_mode(void)
 static void stub_set_volume(int id)
 {
     g_volume = id;
+    g_volume_at = ++g_seq;
 }
 static int stub_get_volume(void)
 {
@@ -64,6 +78,7 @@ static void stub_draw_score(int h, int a)
 {
     g_score_home = h;
     g_score_away = a;
+    g_score_at = ++g_seq;
 }
 static void stub_arm(uint32_t us, bool extend)
 {
@@ -73,11 +88,13 @@ static void stub_arm(uint32_t us, bool extend)
 static void stub_glyph(int id)
 {
     g_glyph = id;
+    g_glyph_at = ++g_seq;
 }
 static void stub_pixel(int row, int col)
 {
     g_pixel_row = row;
     g_pixel_col = col;
+    g_pixel_at = ++g_seq;
 }
 static void stub_set_dwell(uint16_t us)
 {
@@ -87,7 +104,10 @@ static uint16_t stub_get_dwell(void)
 {
     return g_dwell;
 }
-static void stub_clear(void) {}
+static void stub_clear(void)
+{
+    g_clear_at = ++g_seq;
+}
 static void stub_blank(void)
 {
     g_blank_count++;
@@ -104,8 +124,14 @@ static void stub_flag(uint8_t f, bool on)
 {
     (void)f;
     (void)on;
+    g_pause_at = ++g_seq;
 }
 static void stub_reset(void) {}
+static void stub_takeover(void)
+{
+    g_takeover_count++;
+    g_takeover_at = ++g_seq;
+}
 static void stub_identity(void) {}
 static RotationSnapshot stub_rot(void)
 {
@@ -117,7 +143,7 @@ static RotationSnapshot stub_rot(void)
 
 static void install_stubs(void)
 {
-    CommandsDeps d = {
+    g_installed = (CommandsDeps){
         .now_us = fake_time_now_us,
         .draw_score = stub_draw_score,
         .arm_activity = stub_arm,
@@ -140,8 +166,9 @@ static void install_stubs(void)
         .send_identity = stub_identity,
         .ack = stub_ack,
         .note_command = stub_note,
+        .host_takeover = stub_takeover,
     };
-    commands_set_deps(&d);
+    commands_set_deps(&g_installed);
 }
 
 int main(void)
@@ -201,6 +228,41 @@ int main(void)
     TEST_CHECK_EQ_INT(g_pixel_row, 7);
     TEST_CHECK_EQ_INT(g_pixel_col, 7);
     TEST_CHECK(strncmp(g_last_ack, "ERR pixel", 9) == 0);
+
+    /* Display commands take the display over from the boot demo, before they
+     * run (checked against the handler's first dep call); queries and tuning
+     * leave it alone, as do unknown verbs. */
+    static const struct {
+        const char *line;
+        int *handler_at;
+    } kTakeovers[] = {
+        {"X 1 2", &g_pixel_at},  {"G 2", &g_glyph_at},     {"B", &g_clear_at},
+        {"S 1 1", &g_score_at},  {"V 0", &g_volume_at},    {"M static", &g_mode_at},
+        {"P", &g_pause_at},      {"P", &g_pause_at},
+    };
+    for (size_t i = 0; i < sizeof(kTakeovers) / sizeof(kTakeovers[0]); i++) {
+        int before = g_takeover_count;
+        feed_line(kTakeovers[i].line);
+        TEST_CHECK_EQ_INT(g_takeover_count, before + 1);
+        TEST_CHECK(g_takeover_at < *kTakeovers[i].handler_at);
+    }
+    /* A rejected display command still takes over: the host wants the display. */
+    int takeovers = g_takeover_count;
+    feed_line("X 9 9");
+    TEST_CHECK_EQ_INT(g_takeover_count, takeovers + 1);
+    static const char *const kNoTakeover[] = {"I", "?", "D 400", "H", "Z", "Q"};
+    for (size_t i = 0; i < sizeof(kNoTakeover) / sizeof(kNoTakeover[0]); i++) {
+        feed_line(kNoTakeover[i]);
+    }
+    TEST_CHECK_EQ_INT(g_takeover_count, takeovers + 1);
+
+    /* The hook is optional. */
+    CommandsDeps no_hook = g_installed;
+    no_hook.host_takeover = NULL;
+    commands_set_deps(&no_hook);
+    feed_line("G 3");
+    TEST_CHECK_EQ_INT(g_glyph, 3);
+    commands_set_deps(&g_installed);
 
     /* Idle line reset: partial command, wait, then new command. */
     fake_time_set(0);

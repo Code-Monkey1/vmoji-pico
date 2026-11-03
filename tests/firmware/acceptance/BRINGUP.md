@@ -13,8 +13,12 @@ Drive the board over USB CDC (`/dev/ttyACM0`) or UART0. Line endings: `\n`.
 
 ## 1. Static matrix
 
-1. Power the Pico; open a serial terminal at 115200 (USB CDC).
-2. Send `G 1` — heart glyph should appear, upright.
+1. Power the Pico: with nothing connected, the boot demo walks every LED alone,
+   row by row, 2 per second, and loops (`kBootDemo` in `vmoji/main.c`). Open a
+   serial terminal at 115200 (USB CDC). Queries (`?`, `I`) and `D`/`H`/`Z`
+   leave the demo running.
+2. Send `G 1`: the demo stops (any display command takes over) and the heart
+   glyph should appear, upright.
 3. Send `S 2 3` — score digits; activity pixel blinks.
 4. Dashboard (optional): Status messages arrive; CRC errors ~0.
 5. Send `P` (pause) — display freezes; board must **not** watchdog-reset.
