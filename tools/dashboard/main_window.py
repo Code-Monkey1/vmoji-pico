@@ -299,6 +299,10 @@ class MainWindow(QMainWindow):
         self.plot_refresh = self._make_plot("Refresh rate", "Hz")
         self.curve_refresh = self.plot_refresh.plot(pen=pg.mkPen("#5ec8ff", width=2))
 
+        # Rotor speed from the IR index: the health signal for the spinning display.
+        self.plot_rpm = self._make_plot("Rotor speed", "RPM")
+        self.curve_rpm = self.plot_rpm.plot(pen=pg.mkPen("#63e6be", width=2))
+
         self.plot_period = self._make_plot("Scan period", "us")
         self.plot_period.addLegend(offset=(-10, 10), labelTextSize="8pt")
         self.curve_period_max = self.plot_period.plot(
@@ -321,14 +325,21 @@ class MainWindow(QMainWindow):
 
         # One shared x-axis: correlating a jitter spike against a temperature or
         # rate change is the entire reason these plots sit on one screen.
-        for plot in (self.plot_period, self.plot_jitter, self.plot_temp):
+        for plot in (self.plot_rpm, self.plot_period, self.plot_jitter, self.plot_temp):
             plot.setXLink(self.plot_refresh)
 
-        # A splitter rather than a stack: four plots with a fixed share each
+        # A splitter rather than a stack: five plots with a fixed share each
         # cannot be made readable on a short window, and which plot matters
         # depends on what you are chasing. Dragging a divider is the fix.
         stack = QSplitter(Qt.Orientation.Vertical)
-        for plot in (self.plot_refresh, self.plot_period, self.plot_jitter, self.plot_temp):
+        plots = (
+            self.plot_refresh,
+            self.plot_rpm,
+            self.plot_period,
+            self.plot_jitter,
+            self.plot_temp,
+        )
+        for plot in plots:
             plot.setMinimumHeight(60)
             stack.addWidget(plot)
         stack.setChildrenCollapsible(False)
@@ -1116,6 +1127,7 @@ class MainWindow(QMainWindow):
         window = float(self.window_spin.value())
 
         self.curve_refresh.setData(*self.model.refresh_hz.window(window))
+        self.curve_rpm.setData(*self.model.rpm.window(window))
         self.curve_period_mean.setData(*self.model.period_mean_us.window(window))
         self.curve_period_min.setData(*self.model.period_min_us.window(window))
         self.curve_period_max.setData(*self.model.period_max_us.window(window))
@@ -1212,7 +1224,12 @@ class MainWindow(QMainWindow):
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState())
         settings.setValue("splitter", self.main_splitter.saveState())
-        settings.setValue("plotSplitter", self.plot_splitter.saveState())
+        settings.setValue(self._plot_splitter_key(), self.plot_splitter.saveState())
+
+    def _plot_splitter_key(self) -> str:
+        # Keyed by plot count: a layout saved with a different set of plots would
+        # squash a newly added one to its minimum height.
+        return f"plotSplitter/{self.plot_splitter.count()}"
 
     def _restore_layout(self) -> None:
         """Reapply the last session's geometry, if it still makes sense.
@@ -1231,7 +1248,7 @@ class MainWindow(QMainWindow):
         for key, widget in (
             ("windowState", None),
             ("splitter", self.main_splitter),
-            ("plotSplitter", self.plot_splitter),
+            (self._plot_splitter_key(), self.plot_splitter),
         ):
             state = settings.value(key)
             if state is None:

@@ -27,6 +27,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import NamedTuple, Protocol
 
 import protocol
@@ -354,6 +355,9 @@ class SimSource:
     SETTLE_US = 5
     ROWS = protocol.MATRIX_SIZE
     LOOP_OVERHEAD_US = 40
+    ROTOR_RPM = 1000  # vmoji/rotation_sync.h ROTATION_SIM_RPM: the nominal build speed
+    # Mode names accepted by `M`, exactly as the firmware spells them.
+    _MODE_NAMES = MappingProxyType({mode.name.lower(): mode for mode in protocol.AppMode})
 
     def __init__(self, error_rate: float = 0.0, seed: int | None = None) -> None:
         self.name = "simulator"
@@ -373,6 +377,7 @@ class SimSource:
         self._row_dwell_us = 400
         self._glyph_id = 1
         self._flags = 0
+        self._mode = protocol.AppMode.STATIC
         self._paused = False
         self._rows = self._glyph_rows(self._glyph_id)
 
@@ -458,6 +463,16 @@ class SimSource:
         uptime_s = time.monotonic() - self._start
         temp_c = 26.5 + 2.2 * (1.0 - math.exp(-uptime_s / 90.0)) + self._rng.gauss(0, 0.05)
 
+        # Mirrors the firmware: the rotation estimator only runs in pov/sim, and
+        # starts at the nominal ROTATION_SIM_RPM. So rpm always reads 1000 here,
+        # but only sim mode (fixed simulated index) has SYNC_OK; in static and in
+        # pov without an IR sensor the number is a placeholder, not a measurement.
+        rpm = self.ROTOR_RPM
+        synced = self._mode is protocol.AppMode.SIM
+        pov_flags = (
+            int(protocol.StatusFlag.SYNC_OK) | int(protocol.StatusFlag.SIM) if synced else 0
+        )
+
         return protocol.pack_status_payload(
             uptime_ms=int(uptime_s * 1000),
             scan_count=self._scan_count,
@@ -472,7 +487,11 @@ class SimSource:
             rx_bytes=self._rx_bytes,
             row_dwell_us=self._row_dwell_us,
             glyph_id=self._glyph_id,
-            flags=self._flags,
+            flags=self._flags | pov_flags,
+            rpm=rpm,
+            mode=int(self._mode),
+            volume_id=0,
+            rev_period_us=60_000_000 // rpm,
         )
 
     def _service(self) -> None:
@@ -564,8 +583,18 @@ class SimSource:
                 ack = "OK counters cleared"
             elif verb == "H":
                 ack = "OK heartbeat"
+            elif verb == "M" and argument in self._MODE_NAMES:
+                self._mode = self._MODE_NAMES[argument]
+                ack = f"OK mode {argument}"
+            elif verb == "M":
+                ok = False
+                ack = "ERR mode static|pov|sim"
             elif verb == "?":
-                ack = f"CFG dwell={self._row_dwell_us} paused={int(self._paused)}"
+                ack = (
+                    f"CFG mode={self._mode.name.lower()} vol=0 dwell={self._row_dwell_us} "
+                    f"paused={int(self._paused)} rpm={self.ROTOR_RPM} "
+                    f"period={60_000_000 // self.ROTOR_RPM}"
+                )
             elif verb == "S":
                 parts = argument.split()
                 if len(parts) == 2 and all(p.isdigit() for p in parts):

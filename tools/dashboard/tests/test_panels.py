@@ -92,6 +92,62 @@ def test_rejected_commands_are_highlighted_only_when_there_are_some():
     ].warn
 
 
+def test_pov_fields_are_rendered():
+    cells = panels.status_cells(
+        _status(rpm=1000, mode=int(protocol.AppMode.POV), volume_id=2, rev_period_us=60000,
+                flags=int(protocol.StatusFlag.SYNC_OK)),
+        stale=False,
+    )
+    assert cells["Mode"].text == "POV"
+    assert cells["Rotor speed"].text == "1,000 RPM"
+    assert not cells["Rotor speed"].warn
+    assert cells["Rev period"].text == "60,000 us"
+    assert cells["Volume"].text == "2"
+
+
+def test_rotor_speed_without_sync_is_not_shown_as_a_measurement():
+    """Without SYNC_OK the firmware sends a placeholder (1000 in static mode)."""
+    static = int(protocol.AppMode.STATIC)
+    status = _status(rpm=1000, mode=static, rev_period_us=60000)
+    cells = panels.status_cells(status, stale=False)
+    assert cells["Rotor speed"].text == "no sync"
+    assert not cells["Rotor speed"].warn  # expected in static mode
+    assert cells["Rev period"].text == "-"
+
+
+def test_lost_sync_in_pov_mode_is_highlighted():
+    pov = int(protocol.AppMode.POV)
+    cell = panels.status_cells(_status(rpm=1000, mode=pov), stale=False)["Rotor speed"]
+    assert cell.text == "no sync"
+    assert cell.warn
+
+
+def test_legacy_status_without_pov_fields_renders_dashes():
+    legacy = protocol.Status.unpack(protocol.pack_status_payload()[:32], host_time=0.0, seq=0)
+    cells = panels.status_cells(legacy, stale=False)
+    for key in ("Mode", "Rotor speed", "Rev period", "Volume"):
+        assert cells[key].text == "-", key
+
+
+def test_an_unknown_mode_is_shown_raw():
+    assert panels.status_cells(_status(mode=9), stale=False)["Mode"].text == "9"
+
+
+@pytest.mark.parametrize(
+    "flag, alarming",
+    [
+        (protocol.StatusFlag.OVERRUN, True),
+        (protocol.StatusFlag.TX_DROP, True),
+        (protocol.StatusFlag.FIFO_OVF, True),
+        (protocol.StatusFlag.SYNC_OK, False),
+        (protocol.StatusFlag.SIM, False),
+        (protocol.StatusFlag.PAUSED, False),
+    ],
+)
+def test_only_data_loss_flags_are_alarming(flag, alarming):
+    assert panels.status_cells(_status(flags=int(flag)), stale=False)["Flags"].warn is alarming
+
+
 def test_a_stale_link_casts_doubt_on_the_refresh_rate():
     """The last value stays on screen, so it has to be marked as suspect."""
     assert not panels.status_cells(_status(), stale=False)["Refresh rate"].warn

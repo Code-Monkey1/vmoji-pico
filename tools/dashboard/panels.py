@@ -63,6 +63,13 @@ STATUS_SPECS: tuple[tuple[str, Callable[[protocol.Status, bool], Cell]], ...] = 
         "Commands rejected",
         lambda s, stale: Cell(f"{s.cmd_err:,}", warn=s.cmd_err > 0),
     ),
+    ("Mode", lambda s, stale: _mode_cell(s)),
+    ("Rotor speed", lambda s, stale: _rpm_cell(s)),
+    (
+        "Rev period",
+        lambda s, stale: Cell(f"{s.rev_period_us:,} us" if _rotation_valid(s) else "-"),
+    ),
+    ("Volume", lambda s, stale: Cell("-" if s.volume_id is None else str(s.volume_id))),
     ("Flags", lambda s, stale: _flags_cell(s)),
 )
 
@@ -71,12 +78,46 @@ STATUS_KEYS = _keys(STATUS_SPECS)
 
 def _flags_cell(status: protocol.Status) -> Cell:
     names = protocol.flag_names(status.flags)
-    # ACTIVITY and PAUSED are ordinary states; the other two mean something was
-    # lost, which is what the highlight is for.
-    alarming = status.has_flag(protocol.StatusFlag.OVERRUN) or status.has_flag(
-        protocol.StatusFlag.TX_DROP
-    )
+    # ACTIVITY, PAUSED, SYNC OK and SIM are ordinary states; the others mean
+    # something was lost, which is what the highlight is for.
+    alarming = any(status.has_flag(flag) for flag in _ALARM_FLAGS)
     return Cell(" ".join(names) if names else "-", warn=alarming)
+
+
+_ALARM_FLAGS = (
+    protocol.StatusFlag.OVERRUN,
+    protocol.StatusFlag.TX_DROP,
+    protocol.StatusFlag.FIFO_OVF,
+)
+
+
+def _mode_cell(status: protocol.Status) -> Cell:
+    # None: firmware older than the POV fields. An unknown number: firmware
+    # newer than this dashboard. Show it raw rather than guess.
+    if status.mode is None:
+        return Cell("-")
+    try:
+        return Cell(protocol.AppMode(status.mode).name)
+    except ValueError:
+        return Cell(str(status.mode))
+
+
+def _rotation_valid(status: protocol.Status) -> bool:
+    """rpm and rev period mean something only while the index is locked.
+
+    Without SYNC_OK the firmware still sends its estimator's last (or initial)
+    value: in static mode that is a fixed placeholder, never a measurement.
+    """
+    return status.rpm is not None and status.has_flag(protocol.StatusFlag.SYNC_OK)
+
+
+def _rpm_cell(status: protocol.Status) -> Cell:
+    if status.rpm is None:
+        return Cell("-")
+    if not _rotation_valid(status):
+        # Lost sync matters in POV mode, where the picture depends on it.
+        return Cell("no sync", warn=status.mode == protocol.AppMode.POV)
+    return Cell(f"{status.rpm:,} RPM")
 
 
 def status_cells(status: protocol.Status, stale: bool) -> dict[str, Cell]:

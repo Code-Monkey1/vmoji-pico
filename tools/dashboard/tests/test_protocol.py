@@ -1,11 +1,10 @@
 """Parser and model tests.
 
-The reference vectors come from the C++ implementation:
+The reference vectors come from the C++ implementation, committed as
+tools/protocol_vectors.txt (regenerate with tools/update-protocol-vectors.sh;
+the `protocol_vectors_current` ctest fails until you do).
 
-    g++ -std=c++17 -Wall -Wextra -I vmoji tools/protocol_selftest.cpp -o /tmp/selftest
-    /tmp/selftest --vectors
-
-Pinning them here is the point. Two independent implementations of one wire
+Reading them from that one file is the point. Two independent implementations of one wire
 format will drift apart unless something forces them to agree, and the failure
 mode of a silent drift is a dashboard that plots confident nonsense.
 
@@ -15,6 +14,9 @@ Run from tools/dashboard:
 
 from __future__ import annotations
 
+import dataclasses
+from pathlib import Path
+
 import pytest
 
 import model
@@ -23,12 +25,46 @@ import sources
 
 # --- vectors emitted by tools/protocol_selftest.cpp --------------------------
 
-CPP_STATUS_FRAME = bytes.fromhex(
-    "aa552800010740e20100cd810100127a800c6c0c520de600ab0a0c0003000010000090010201e803020160ea00005010"
-)
-CPP_FRAMEBUFFER_FRAME = bytes.fromhex("aa550800020881402010814020103e9c")
-CPP_LOG_FRAME = bytes.fromhex(
-    "aa5516000309766d6f6a692074656c656d65747279206f6e6c696e65b521"
+VECTORS_FILE = Path(__file__).resolve().parents[2] / "protocol_vectors.txt"
+
+
+def _load_vectors() -> dict[str, bytes]:
+    vectors = {}
+    for line in VECTORS_FILE.read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        name, *fields = line.split()
+        if name != "crc16":
+            vectors[name] = bytes.fromhex(fields[-1])
+    return vectors
+
+
+_VECTORS = _load_vectors()
+CPP_STATUS_FRAME = _VECTORS["status"]
+CPP_FRAMEBUFFER_FRAME = _VECTORS["framebuffer"]
+CPP_LOG_FRAME = _VECTORS["log"]
+CPP_STATUS_PAYLOAD = CPP_STATUS_FRAME[protocol.HEADER_SIZE : -protocol.CRC_SIZE]
+
+# The values protocol_selftest.cpp's sample_status() encodes into the vector.
+CPP_STATUS_FIELDS = dict(
+    uptime_ms=123456,
+    scan_count=98765,
+    refresh_chz=31250,
+    period_mean_us=3200,
+    period_min_us=3180,
+    period_max_us=3410,
+    jitter_pp_us=230,
+    die_temp_c_x100=2731,
+    cmd_ok=12,
+    cmd_err=3,
+    rx_bytes=4096,
+    row_dwell_us=400,
+    glyph_id=2,
+    flags=int(protocol.StatusFlag.ACTIVITY),
+    rpm=1000,
+    mode=int(protocol.AppMode.SIM),
+    volume_id=1,
+    rev_period_us=60000,
 )
 
 
@@ -37,8 +73,18 @@ def test_crc_matches_standard_check_value():
     assert protocol.crc16(b"123456789") == 0x29B1
 
 
-def test_status_struct_size_matches_firmware():
-    assert protocol._STATUS_STRUCT.size == 32
+def test_python_decodes_the_whole_cpp_status_payload():
+    """The guard that was missing: if the firmware appends a field, the Python
+    struct must grow with it, or the dashboard silently ignores the new data."""
+    assert protocol._STATUS_STRUCT.size == len(CPP_STATUS_PAYLOAD)
+
+
+def test_every_status_struct_field_has_a_dataclass_field():
+    struct_fields = len(protocol._STATUS_STRUCT.unpack(CPP_STATUS_PAYLOAD))
+    data_fields = [f.name for f in dataclasses.fields(protocol.Status)]
+    # host_time and seq come from the frame, not the payload.
+    assert len(data_fields) - 2 == struct_fields
+    assert set(CPP_STATUS_FIELDS) == set(data_fields) - {"host_time", "seq"}
 
 
 def test_decodes_cpp_status_vector():
@@ -66,6 +112,26 @@ def test_decodes_cpp_status_vector():
     assert status.has_flag(protocol.StatusFlag.ACTIVITY)
     assert not status.has_flag(protocol.StatusFlag.PAUSED)
     assert parser.stats.crc_errors == 0
+    # Every field, the appended POV ones included.
+    for name, expected in CPP_STATUS_FIELDS.items():
+        assert getattr(status, name) == expected, name
+
+
+def test_a_legacy_32_byte_status_still_decodes():
+    """Older firmware and old captures send only the original prefix."""
+    parser = protocol.FrameParser(clock=lambda: 0.0)
+    legacy = protocol.encode_frame(protocol.MsgId.STATUS, 7, CPP_STATUS_PAYLOAD[:32])
+    (status,) = parser.feed(legacy)
+
+    assert isinstance(status, protocol.Status)
+    assert status.uptime_ms == 123456
+    assert status.flags == int(protocol.StatusFlag.ACTIVITY)
+    assert (status.rpm, status.mode, status.volume_id, status.rev_period_us) == (
+        None,
+        None,
+        None,
+        None,
+    )
 
 
 def test_decodes_cpp_framebuffer_vector():
@@ -90,8 +156,10 @@ def test_decodes_cpp_log_vector():
 
 
 def test_python_encoder_reproduces_cpp_bytes():
-    """The strongest form of the agreement check: same inputs, same bytes."""
-    payload = CPP_STATUS_FRAME[protocol.HEADER_SIZE : -protocol.CRC_SIZE]
+    """The strongest form of the agreement check: same field values, same bytes.
+    Packing the fields in Python proves the layout, not just the framing."""
+    payload = protocol.pack_status_payload(**CPP_STATUS_FIELDS)
+    assert payload == CPP_STATUS_PAYLOAD
     assert protocol.encode_frame(protocol.MsgId.STATUS, 7, payload) == CPP_STATUS_FRAME
 
 
@@ -414,3 +482,35 @@ def test_walk_pixels_runs_against_simulator(capsys):
     out = capsys.readouterr().out
     assert "[ 1/64] r0 c0" in out  # top-left first: firmware row 0 is the top
     assert "[64/64] r7 c7" in out
+
+
+def test_simulator_mirrors_firmware_rotation_reporting():
+    """Static mode: placeholder rpm without SYNC_OK. `M sim`: locked at 1000 RPM."""
+    sim = sources.SimSource(seed=1)
+    parser = protocol.FrameParser(clock=lambda: 0.0)
+
+    status = protocol.Status.unpack(sim._build_status(100_000), host_time=0.0, seq=0)
+    assert status.mode == protocol.AppMode.STATIC
+    assert not status.has_flag(protocol.StatusFlag.SYNC_OK)
+
+    sim.write(b"M sim\n")
+    status = protocol.Status.unpack(sim._build_status(100_000), host_time=0.0, seq=0)
+    assert status.mode == protocol.AppMode.SIM
+    assert status.has_flag(protocol.StatusFlag.SYNC_OK)
+    assert status.has_flag(protocol.StatusFlag.SIM)
+    assert (status.rpm, status.rev_period_us) == (1000, 60000)
+
+    sim.write(b"M simulate\n")
+    acks = [m.text for m in parser.feed(sim.read(4096)) if isinstance(m, protocol.TextMessage)]
+    assert "OK mode sim" in acks
+    assert "ERR mode static|pov|sim" in acks
+
+
+def test_model_plots_rpm_only_while_synced():
+    telemetry = model.TelemetryModel()
+    unsynced = protocol.Status.unpack(protocol.pack_status_payload(rpm=1000), 0.0, 0)
+    synced = protocol.Status.unpack(
+        protocol.pack_status_payload(rpm=1000, flags=int(protocol.StatusFlag.SYNC_OK)), 1.0, 1
+    )
+    telemetry.add_messages([unsynced, synced])
+    assert len(telemetry.rpm) == 1

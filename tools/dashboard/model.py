@@ -103,6 +103,7 @@ class TelemetryModel:
         self.period_max_us = Series("Scan period (max)", "us", n)
         self.jitter_pp_us = Series("Jitter (peak-peak)", "us", n)
         self.die_temp_c = Series("Die temperature", "C", n)
+        self.rpm = Series("Rotor speed", "RPM", n)
 
         self.latest_status: protocol.Status | None = None
         self.latest_framebuffer: protocol.FrameBuffer | None = None
@@ -162,6 +163,10 @@ class TelemetryModel:
         self.period_max_us.append(t, status.period_max_us)
         self.jitter_pp_us.append(t, status.jitter_pp_us)
         self.die_temp_c.append(t, status.die_temp_c)
+        # Plot rpm only while the index is locked: older firmware has no rpm
+        # field, and without SYNC_OK the value is a placeholder, not a reading.
+        if status.rpm is not None and status.has_flag(protocol.StatusFlag.SYNC_OK):
+            self.rpm.append(t, status.rpm)
 
         self.latest_status = status
         self.status_count += 1
@@ -194,6 +199,7 @@ class TelemetryModel:
             self.period_max_us,
             self.jitter_pp_us,
             self.die_temp_c,
+            self.rpm,
         )
 
     def clear(self) -> None:

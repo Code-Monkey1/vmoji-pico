@@ -62,6 +62,14 @@ class StatusFlag(IntEnum):
     FIFO_OVF = 0x40
 
 
+class AppMode(IntEnum):
+    """What the firmware is driving, mirrored from `vmoji/app_mode.h`."""
+
+    STATIC = 0
+    POV = 1
+    SIM = 2
+
+
 def flag_names(flags: int) -> tuple[str, ...]:
     """The set bits, named, in declaration order.
 
@@ -102,8 +110,13 @@ def crc16(data: bytes, seed: int = 0xFFFF) -> int:
 # Decoded messages
 # ---------------------------------------------------------------------------
 
-_STATUS_STRUCT = struct.Struct("<IIHHHHHhHHIHBB")
-assert _STATUS_STRUCT.size == 32, "StatusPayload layout drifted from the firmware"
+# The original 32-byte prefix, then the fields appended for POV (rpm, mode,
+# volume_id, rev_period_us). Older firmware and old captures send only the
+# prefix; the appended fields then decode as None.
+_STATUS_PREFIX_STRUCT = struct.Struct("<IIHHHHHhHHIHBB")
+_STATUS_STRUCT = struct.Struct("<IIHHHHHhHHIHBBHBBI")
+assert _STATUS_PREFIX_STRUCT.size == 32, "StatusPayload prefix drifted from the firmware"
+assert _STATUS_STRUCT.size == 40, "StatusPayload layout drifted from the firmware"
 
 
 @dataclass(frozen=True)
@@ -126,6 +139,11 @@ class Status:
     row_dwell_us: int
     glyph_id: int
     flags: int
+    # Appended fields: None when the sender only knows the 32-byte prefix.
+    rpm: int | None = None
+    mode: int | None = None
+    volume_id: int | None = None
+    rev_period_us: int | None = None
 
     @property
     def refresh_hz(self) -> float:
@@ -147,8 +165,13 @@ class Status:
         # unpack_from, not unpack: a longer payload means newer firmware has
         # appended fields this host does not know about. Decoding the prefix we
         # do understand keeps an older dashboard usable against a newer board,
-        # which is the whole reason the length is on the wire.
-        fields = _STATUS_STRUCT.unpack_from(payload, 0)
+        # which is the whole reason the length is on the wire. A payload with
+        # only the 32-byte prefix is older firmware (or an old capture): the
+        # appended fields stay None.
+        if len(payload) >= _STATUS_STRUCT.size:
+            fields = _STATUS_STRUCT.unpack_from(payload, 0)
+        else:
+            fields = _STATUS_PREFIX_STRUCT.unpack_from(payload, 0)
         return cls(host_time, seq, *fields)
 
 
@@ -323,7 +346,7 @@ class FrameParser:
             self.stats.unknown_ids += 1
             return UnknownMessage(now, seq, raw_id, payload)
 
-        if msg_id is MsgId.STATUS and len(payload) >= _STATUS_STRUCT.size:
+        if msg_id is MsgId.STATUS and len(payload) >= _STATUS_PREFIX_STRUCT.size:
             return Status.unpack(payload, now, seq)
         if msg_id is MsgId.FRAMEBUFFER and len(payload) >= MATRIX_SIZE:
             return FrameBuffer.unpack(payload, now, seq)
@@ -364,6 +387,10 @@ def pack_status_payload(
     row_dwell_us: int = 0,
     glyph_id: int = 0,
     flags: int = 0,
+    rpm: int = 0,
+    mode: int = 0,
+    volume_id: int = 0,
+    rev_period_us: int = 0,
 ) -> bytes:
     return _STATUS_STRUCT.pack(
         uptime_ms,
@@ -380,6 +407,10 @@ def pack_status_payload(
         row_dwell_us,
         glyph_id,
         flags,
+        rpm,
+        mode,
+        volume_id,
+        rev_period_us,
     )
 
 
