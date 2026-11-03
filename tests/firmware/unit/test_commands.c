@@ -271,5 +271,25 @@ int main(void)
     feed_line("G 1");
     TEST_CHECK_EQ_INT(g_glyph, 1);
 
+    /* Mode names match exactly: no prefixes, trailing spaces are fine. */
+    feed_line("M static");
+    int errs = g_cmd_err;
+    feed_line("M simulate");
+    TEST_CHECK_EQ_INT(g_cmd_err, errs + 1);
+    TEST_CHECK(g_mode == APP_MODE_STATIC);
+    feed_line("M pov extra");
+    TEST_CHECK_EQ_INT(g_cmd_err, errs + 2);
+    feed_line("M pov  ");
+    TEST_CHECK(g_mode == APP_MODE_POV);
+    TEST_CHECK_EQ_INT(g_cmd_err, errs + 2);
+
+    /* The verb list is the dispatch table, in order. */
+    char verbs[48];
+    commands_verbs(verbs, sizeof(verbs));
+    TEST_CHECK(strcmp(verbs, "S H G X D B P Z M V ? I") == 0);
+    char tiny[4];
+    TEST_CHECK_EQ_INT((int)commands_verbs(tiny, sizeof(tiny)), 3);
+    TEST_CHECK(strcmp(tiny, "S H") == 0);
+
     return test_finish("commands");
 }
