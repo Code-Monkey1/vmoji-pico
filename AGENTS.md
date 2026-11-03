@@ -27,7 +27,6 @@
   together and keep the shared test vectors passing.
 - OpenSCAD parts all derive from one shared params file. The layout asserts and the collision
   script are the safety net: don't weaken or bypass them to make a build pass.
-  `3D/archive/` is retired v1 code and not expected to build.
 - Coil-safe rule: no metal in the TX-RX coil gap.
 
 ## Conventions

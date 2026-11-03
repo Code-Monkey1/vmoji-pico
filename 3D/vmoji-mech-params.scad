@@ -147,7 +147,6 @@ vm_ring_rebate_extra = 0.8;
 vm_deck_shaft_clear_d = 10;
 vm_deck_boss_wall = 2.5; // Around the top 608 pocket.
 vm_tx_wire_y = -12; // TX lead groove runs to the +X edge at this Y.
-vm_tx_wire_w = 7.5; // 3 was too narrow for the coil leads.
 vm_tx_wire_w = 8.5; // 3, then 7.5, were too narrow for the coil leads.
 // The groove starts this far (X) past where its inner edge meets the ring island, so it never cuts
 // into the island that centres the coil (starting at x=0 nicked it).
@@ -166,8 +165,6 @@ vm_center_screw_head_h = 3; // M3 SHCS head sits on the hub, under the PCB.
 // Extra standoff (taller PCB corner bosses): keeps the PCB components out of the RX coil field.
 vm_pcb_rx_extra = 3;
 // RX lead exit: rounded slot along the coil (radial width x tangential length). Ø3.5 was too tight.
-vm_rx_wire_d = 3.5;
-vm_rx_wire_len = 8.75;
 // Its centre sits vm_rx_wire_r_out beyond the coil OD, so it is an open notch at the head disk rim
 // that still overlaps the RX rebate (asserted in rotor-head).
 vm_rx_wire_d = 5.3;
@@ -261,7 +258,6 @@ vm_switch_cover_h = 30;
 
 /* ---- Heat-set inserts (M3, Ø4.2) ---- */
 // Brass inserts want metal M3 screws. Pilot = vm_insert_hole_d + 2*$slop (proven with yours).
-vm_insert_od = 4.2;
 vm_insert_hole_d = 3.9; // Coupon: 4.0 slightly loose; the iron should have to push the insert.
 vm_insert_len_col = 6; // Column tops and lid posts.
 vm_insert_len_head = 4; // Rotor head PCB bosses.
@@ -314,7 +310,6 @@ function vm_tx_ring_top_z() = vm_tx_ring_z() + vm_ring_h;
 function vm_deck_z() = vm_tx_ring_z() - vm_deck_plate_t; // Plate underside = column tops.
 function vm_deck_top_z() = vm_tx_ring_z() + vm_ring_h + vm_ring_rebate_extra;
 function vm_col_top_z() = vm_deck_z();
-function vm_tx_deck_z() = vm_deck_z();
 function vm_rx_ring_z() = vm_tx_ring_top_z() + vm_coil_gap;
 function vm_head_z() = vm_rx_ring_z() - vm_rx_recess; // Head underside (world).
 // Head-local heights.
@@ -326,8 +321,6 @@ function vm_head_pcb_z() = vm_head_hub_top() + vm_center_screw_head_h + 0.5 + vm
 function vm_rotor_top_z() = vm_head_z() + vm_key_len; // Shaft top face seats on the socket ceiling.
 function vm_key_z0() = vm_head_z() - 0.5;
 function vm_pcb_z() = vm_head_z() + vm_head_pcb_z();
-function vm_display_z() = vm_pcb_z();
-function vm_base_contact_z() = -vm_skirt_h;
 function vm_porch_top_z() = vm_floor_h + vm_porch_inner_z;
 function vm_lid_top_z() = vm_porch_top_z() + vm_lid_t;
 // IR tips (world).
@@ -336,7 +329,6 @@ function vm_ir_rx_tip_z() = vm_head_z() + vm_ir_rx_seat_z - (vm_ir_len - vm_ir_f
 
 function vm_gear_ratio() = vm_driven_teeth / vm_pinion_teeth;
 function vm_driven_spin(t) = vm_rotor_dir * t * 360;
-function vm_pinion_spin(t) = -vm_rotor_dir * t * 360 * vm_gear_ratio();
 
 // Kept for callers of the v1 name; v2 checks everything in vm_assert_layout().
 module vm_assert_coil_gap_metal_free() {

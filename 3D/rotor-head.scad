@@ -33,14 +33,27 @@ module rotor_head() {
     ir_xy = mb_ir_xy();
     ir_pts = [ir_xy, -ir_xy];
     ir_boss_d = max(vm_ir_flange_d, vm_ir_rx_hole_d) + 3;
-    rx_wire_r = vm_ring_od / 2 - 1.5;
+    rx_wire_r = vm_ring_od / 2 + vm_rx_wire_r_out;
+    rx_wire_half = (vm_rx_wire_len - vm_rx_wire_d) / 2; // Hull circle offset along the coil.
+    // Slot centre segment (after zrot(vm_rx_wire_angle)) and point-to-segment distance.
+    rx_wire_seg = [for (s = [1, -1]) zrot(vm_rx_wire_angle, p = [rx_wire_r, s * rx_wire_half])];
+    function seg_dist(p, a, b) =
+        let (t = max(0, min(1, (p - a) * (b - a) / ((b - a) * (b - a)))))
+        norm(p - (a + t * (b - a)));
     cw_d = mb_hex_circum_d(vm_cw_nut_af + vm_cw_fit);
     m3_clear = vm_m3_clear_d + 2 * $slop;
 
     vm_assert_layout();
     assert(rebate_id > vm_head_hub_d + 2, "RX rebate cuts into the hub");
-    assert(norm([vm_rx_wire_len / 2, rx_wire_r + vm_rx_wire_d / 2]) < disk_d / 2 - 1,
-        "RX lead slot breaks out of the head disk");
+    // The RX lead slot is an open notch at the disk rim that still reaches the rebate.
+    assert(rx_wire_r + vm_rx_wire_d / 2 > disk_d / 2, "RX lead slot no longer opens at the disk rim");
+    assert(rx_wire_r - vm_rx_wire_d / 2 < rebate_od / 2, "RX lead slot does not reach the RX rebate");
+    for (p = hole_pts)
+        assert(seg_dist(p, rx_wire_seg[0], rx_wire_seg[1]) > boss_d / 2 + vm_rx_wire_d / 2 + 1,
+            "RX lead slot cuts into a PCB corner boss");
+    for (p = ir_pts)
+        assert(seg_dist(p, rx_wire_seg[0], rx_wire_seg[1]) > ir_boss_d / 2 + vm_rx_wire_d / 2 + 1,
+            "RX lead slot cuts into an IR boss");
     assert(vm_cw_r - cw_d / 2 > vm_head_hub_d / 2 + 1 && vm_cw_r + cw_d / 2 < rebate_od / 2,
         "Counterweight pockets must sit over the RX rebate, clear of the hub");
 
@@ -86,7 +99,7 @@ module rotor_head() {
                     down(eps)
                         hull()
                             for (s = [1, -1])
-                                back(s * (vm_rx_wire_len - vm_rx_wire_d) / 2)
+                                back(s * rx_wire_half)
                                     cyl(d = vm_rx_wire_d, h = disk_top + 2 * eps, anchor = BOTTOM);
 
             // Double-D socket on the shaft key; shaft top face seats on the ceiling.

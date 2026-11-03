@@ -3,14 +3,8 @@
 
 /* ---- Fasteners / clearance ---- */
 
-function mb_clearance_hole_d(screw_spec) =
-    struct_val(screw_info(screw_spec), "diameter") + 0.4 + 2 * $slop;
-
 function mb_nut_circum_d(screw_spec) =
     struct_val(nut_info(screw_spec), "width") / cos(30);
-
-function mb_nut_pocket_d(screw_spec, extra_d = 0) =
-    mb_nut_circum_d(screw_spec) + extra_d + 2 * $slop;
 
 function mb_hex_circum_d(af) = af / cos(30);
 
@@ -33,7 +27,6 @@ module mb_iron_clearance() {
 
 /* ---- Bearing / shaft (defaults from params) ---- */
 
-function mb_bearing_id() = vm_bearing_id;
 function mb_bearing_od() = vm_bearing_od;
 function mb_bearing_h() = vm_bearing_h;
 
@@ -42,9 +35,6 @@ function mb_bearing_pocket_d(fit = undef) =
         mb_bearing_od() + f + 2 * $slop;
 
 function mb_bearing_boss_d() = mb_bearing_pocket_d() + 2 * vm_wall_t;
-
-function mb_shaft_clear_d(shaft_d = vm_shcs_d, extra = 0.6) =
-    shaft_d + extra + 2 * $slop;
 
 /* ---- Motor wells ---- */
 
@@ -121,15 +111,6 @@ function mb_gear_root_d(
         pressure_angle = pressure_angle,
         backlash = backlash
     );
-
-function mb_motor_axis_y(
-    mod = mb_gear_mod(),
-    pinion_teeth = mb_pinion_teeth(),
-    driven_teeth = mb_driven_teeth(),
-    helical = mb_gear_helical(),
-    backlash = mb_gear_backlash()
-) =
-    mb_gear_center_dist(mod, pinion_teeth, driven_teeth, helical, backlash);
 
 // Single-helical gear, centered on its thickness. `helical` carries the hand (sign).
 module mb_helical_gear(

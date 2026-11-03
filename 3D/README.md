@@ -189,4 +189,3 @@ volume check uses its envelope.
 | `rotor-head.scad` | RX coil holder + PCB mount + counterweights + IR receiver |
 | `bearing-spacer.scad` | 608 inner-race spacer |
 | `fit-test.scad` | Fit coupons |
-| `archive/` | v1 parts (driven shaft/gear, shaft collar, collets). Kept for reference; their includes no longer resolve from that folder. |
