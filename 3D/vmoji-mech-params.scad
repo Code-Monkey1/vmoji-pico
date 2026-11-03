@@ -148,6 +148,10 @@ vm_deck_shaft_clear_d = 10;
 vm_deck_boss_wall = 2.5; // Around the top 608 pocket.
 vm_tx_wire_y = -12; // TX lead groove runs to the +X edge at this Y.
 vm_tx_wire_w = 7.5; // 3 was too narrow for the coil leads.
+vm_tx_wire_w = 8.5; // 3, then 7.5, were too narrow for the coil leads.
+// The groove starts this far (X) past where its inner edge meets the ring island, so it never cuts
+// into the island that centres the coil (starting at x=0 nicked it).
+vm_tx_wire_island_clear = 1.75;
 
 /* ---- Rotor head (RX coil + PCB) ---- */
 vm_rx_recess = 0.2; // Nominal (vm_ring_h) RX copper face sits this far inside the head underside.
@@ -164,6 +168,11 @@ vm_pcb_rx_extra = 3;
 // RX lead exit: rounded slot along the coil (radial width x tangential length). Ø3.5 was too tight.
 vm_rx_wire_d = 3.5;
 vm_rx_wire_len = 8.75;
+// Its centre sits vm_rx_wire_r_out beyond the coil OD, so it is an open notch at the head disk rim
+// that still overlaps the RX rebate (asserted in rotor-head).
+vm_rx_wire_d = 5.3;
+vm_rx_wire_len = 10.55;
+vm_rx_wire_r_out = 2;
 vm_rx_wire_angle = 90;
 vm_glue_notch_n = 3;
 vm_glue_notch_w = 3;

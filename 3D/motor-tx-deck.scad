@@ -50,9 +50,15 @@ module motor_tx_deck(mount_screw = mount_screw) {
     ir_boss_z0 = min(0, ir_step_z - vm_ir_flange_h - 0.4);
     ir_boss_d = ir_flange_hole_d + 3;
     m3_clear = vm_m3_clear_d + 2 * $slop;
+    // TX lead groove starts where its inner edge clears the ring island (plus a margin).
+    wire_in_y = max(0, abs(vm_tx_wire_y) - vm_tx_wire_w / 2);
+    wire_x0 = sqrt(max(0, (island_d / 2) ^ 2 - wire_in_y ^ 2)) + vm_tx_wire_island_clear;
 
     vm_assert_layout();
     assert(vm_ring_od > vm_ring_id, "ring_od must exceed ring_id");
+    // Rebate edge at the groove's outer side: the groove must start inside it over its full width.
+    assert(wire_x0 < sqrt(max(0, (rebate_od / 2) ^ 2 - (wire_in_y + vm_tx_wire_w) ^ 2)) - 1,
+        "TX lead groove does not open into the ring rebate");
 
     diff() {
         union() {
@@ -93,9 +99,9 @@ module motor_tx_deck(mount_screw = mount_screw) {
                 }
 
             // TX lead groove to the +X edge (toward the box notch).
-            translate([0, vm_tx_wire_y, ring_z])
+            translate([wire_x0, vm_tx_wire_y, ring_z])
                 cuboid(
-                    [deck_half_x + eps, vm_tx_wire_w, top_z - ring_z + eps],
+                    [deck_half_x - wire_x0 + eps, vm_tx_wire_w, top_z - ring_z + eps],
                     anchor = LEFT + BOTTOM
                 );
 
