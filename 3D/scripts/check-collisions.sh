@@ -2,10 +2,10 @@
 # Run every collision / soldering-iron check in collision-check.scad and fail if any
 # intersection has a real volume. Touching faces (zero volume) are OK.
 #
-# Usage: ./check-collisions.sh [check ...]      (default: all checks)
+# Usage: scripts/check-collisions.sh [-h|--help] [check ...]      (default: all checks)
 # Env:   OPENSCAD=/path/to/openscad  THRESHOLD_MM3=0.5  OPENSCAD_ARGS="--enable=manifold"
 set -u
-cd "$(dirname "$0")"
+cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 
 OPENSCAD="${OPENSCAD:-openscad}"
 THRESHOLD_MM3="${THRESHOLD_MM3:-0.5}"
@@ -26,7 +26,39 @@ CHECKS=(
 )
 INFO_CHECKS=(mesh)
 
+usage() {
+    cat <<EOF
+Usage: scripts/check-collisions.sh [-h|--help] [check ...]
+
+Run the collision / soldering-iron checks in collision-check.scad (default: all of them) and fail
+if any intersection has a real volume (> THRESHOLD_MM3). Touching faces are OK. Takes minutes.
+
+Checks:
+$(printf '%s ' "${CHECKS[@]}" | fold -s -w 92 | sed 's/^/  /')
+Info only (full run): ${INFO_CHECKS[*]}
+
+Environment:
+  OPENSCAD=/path/to/openscad          OpenSCAD binary (default: openscad)
+  THRESHOLD_MM3=0.5                   Largest overlap volume still counted as touching
+  OPENSCAD_ARGS="--enable=manifold"   Extra OpenSCAD flags (manifold is faster on newer builds)
+EOF
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        -h | --help) usage; exit 0 ;;
+        -*) echo "Unknown option: $arg (see --help)" >&2; exit 2 ;;
+    esac
+done
+
 if [ "$#" -gt 0 ]; then
+    # An unknown check name renders nothing in collision-check.scad and would pass as "ok".
+    for arg in "$@"; do
+        case " ${CHECKS[*]} ${INFO_CHECKS[*]} " in
+            *" $arg "*) ;;
+            *) echo "Unknown check: $arg (see --help)" >&2; exit 2 ;;
+        esac
+    done
     CHECKS=("$@")
     INFO_CHECKS=()
 fi
@@ -69,11 +101,13 @@ run_one() {
         grep -E "ERROR|Assertion" "$log" | head -3 >&2
         return
     fi
-    if grep -q "Current top level object is empty" "$log" || [ ! -s "$out" ]; then
+    # An empty intersection exits 1 and writes no STL (OpenSCAD 2021), so only trust "empty" when
+    # the log says so: a missing/crashed OpenSCAD must not pass as "no collision".
+    if grep -q "Current top level object is empty" "$log"; then
         echo "0.000"
         return
     fi
-    if [ $rc -ne 0 ]; then
+    if [ $rc -ne 0 ] || [ ! -s "$out" ]; then
         echo "ERROR"
         tail -3 "$log" >&2
         return

@@ -3,9 +3,6 @@
 
 /* ---- Fasteners / clearance ---- */
 
-function mb_nut_circum_d(screw_spec) =
-    struct_val(nut_info(screw_spec), "width") / cos(30);
-
 function mb_hex_circum_d(af) = af / cos(30);
 
 // Heat-set insert pilot, top face at local z=0, going down.

@@ -5,7 +5,7 @@
 //
 // Animate: View → Animate. Start with FPS=30, Steps=180.
 // $t runs 0→1; the rotor turns once per cycle (vm_rotor_dir), pinions twice (2:1) the other way.
-// Collisions: run ./check-collisions.sh (uses the same placements, vmoji-assembly.scad).
+// Collisions: run scripts/check-collisions.sh (uses the same placements, vmoji-assembly.scad).
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
 include <BOSL2/gears.scad>

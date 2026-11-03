@@ -14,8 +14,10 @@
   `cmake -S tests/firmware -B build-host-tests && cmake --build build-host-tests && ctest --test-dir build-host-tests --output-on-failure`
   A single test: `ctest --test-dir build-host-tests -R <test_name>`.
 - Dashboard (from `tools/dashboard`, in its venv): `pytest` and `ruff check`.
-- CAD checks: `3D/check-collisions.sh [check ...]`. Slow (minutes); fails on real overlaps or
+- CAD checks: `3D/scripts/check-collisions.sh [check ...]`. Slow (minutes); fails on real overlaps or
   failed asserts.
+- STL export: `3D/scripts/export-stl.sh [part ...]`. With no args it regenerates all of `3D/stl/`
+  (gitignored) from the printed parts; fit-test only when named. 3D helper scripts live in `3D/scripts/`.
 - The firmware itself builds through the Pico VS Code extension's SDK setup, not a plain CLI
   build. Don't expect to compile `vmoji/` standalone.
 

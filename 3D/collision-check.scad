@@ -1,6 +1,6 @@
 // Collision checks: each `check` renders the intersection of two assembled parts (or a
 // part and a soldering-iron access cylinder). An empty / zero-volume result = OK.
-// Run them all with ./check-collisions.sh (it measures the volume of each result).
+// Run them all with scripts/check-collisions.sh (it measures the volume of each result).
 // Spinning parts are checked with their swept envelopes (motor-base-common.scad), so a
 // pass holds for every rotor angle. The gear mesh itself is reported separately ("mesh").
 include <BOSL2/std.scad>

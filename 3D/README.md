@@ -5,7 +5,8 @@ Coil-safe dual-motor gear drive for the volumetric display. The rotor turns on
 under the TX deck, `vm_top_bearing_coil_clear` (10 mm) below the TX coil. A printed
 plastic rotor runs through the TX–RX gap. Preview the full stack with
 [`assembly-preview.scad`](assembly-preview.scad) (F5; optional Animate, `section` toggle)
-and check it with [`check-collisions.sh`](check-collisions.sh).
+and check it with [`scripts/check-collisions.sh`](scripts/check-collisions.sh). Export STLs for
+printing with [`scripts/export-stl.sh`](scripts/export-stl.sh).
 
 Defaults live in [`vmoji-mech-params.scad`](vmoji-mech-params.scad). Every
 print file includes that before `motor-base-common.scad`.
@@ -78,6 +79,11 @@ Everything prints in PLA. PLA softens around 55–60 °C and creeps under consta
 - Race spacers: 100 % infill. Tighten the M8 stud firmly but don't crank it.
 
 ## Print orientation
+
+Run `scripts/export-stl.sh` first: it replaces the whole `stl/` folder with fresh renders of every
+part below except the fit coupons (`scripts/export-stl.sh fit-test` for those; a later full run
+drops them again). It only touches `stl/` if every part renders without errors, warnings or failed
+asserts. STLs keep the modelled orientation: flip them in the slicer as listed.
 
 | Part | File | Orientation / tips |
 |------|------|--------------------|
@@ -166,11 +172,11 @@ volume check uses its envelope.
 - **Analytic asserts** (`vm_assert_layout()` in `motor-base-common.scad`) run in every file:
   box ↔ deck gap (`vm_porch_gap`, 3 mm), 12V jack cradle ↔ switch keep-out ↔ lid posts, coil gaps, bearing-to-coil distance, metal below the
   coil zone, well ↔ bearing walls, gear ↔ column / well clearance, IR beam gap, insert boss walls, and more.
-- **Geometric checks:** `./check-collisions.sh` intersects every part pair as assembled
+- **Geometric checks:** `scripts/check-collisions.sh` intersects every part pair as assembled
   (spinning parts as swept envelopes) plus a soldering-iron cylinder above every insert, and
   fails on any real overlap. `base_jack`, `base_switch` and `jack_switch` check the jack ghost and the
   switch keep-out box in the electronics box. Takes ~5 min on OpenSCAD 2021; newer builds are faster with
-  `OPENSCAD_ARGS="--enable=manifold"`. Run a subset with `./check-collisions.sh base_deck coils`.
+  `OPENSCAD_ARGS="--enable=manifold"`. Run a subset with `scripts/check-collisions.sh base_deck coils`.
 
 ## File map
 
@@ -180,7 +186,8 @@ volume check uses its envelope.
 | `motor-base-common.scad` | Clearances, gear math, layout, envelopes, `vm_assert_layout()` |
 | `vmoji-assembly.scad` | World placement of every part + hardware ghosts |
 | `assembly-preview.scad` | Full F5 assembly + animation + section |
-| `collision-check.scad` / `check-collisions.sh` | Pairwise collision + iron-access checks |
+| `collision-check.scad` / `scripts/check-collisions.sh` | Pairwise collision + iron-access checks |
+| `scripts/export-stl.sh` | Regenerates `stl/` (all printed parts, or the ones named); `stl/` is gitignored |
 | `motor-base.scad` | Floor, skirt, bottom 608 pocket, crush-rib wells, columns, box |
 | `motor-base-lid.scad` | Box lid |
 | `motor-tx-deck.scad` | TX plate + hanging top 608 pocket + IR emitter |
