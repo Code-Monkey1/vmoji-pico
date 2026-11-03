@@ -1,7 +1,9 @@
 // vmoji: volumetric POV display on the RP2040.
 //
 // This file is only the wiring. Core 0 owns commands, telemetry, rotation sync
-// and volume bake; core 1 runs the PIO-paced parallel GPIO scan. The loop below
+// and volume bake. The scan depends on the mode: in static mode (the boot
+// default) core 0 scans the matrix itself, via matrix_refresh(); in pov and sim
+// modes core 1 runs the PIO-paced parallel GPIO scan. The loop below
 // is deliberately short enough to read in one go — boot demo frame (if due),
 // scan (or POV service), drain input, report, kick the watchdog — because that
 // shape is the timing contract the whole instrument is built to measure.

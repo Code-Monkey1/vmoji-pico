@@ -1,5 +1,7 @@
 #include "uart_link.h"
 
+#include "commands.h"
+
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
 #include "hardware/sync.h"
@@ -82,12 +84,17 @@ static void print_banner(void)
         "=====================================" EOL,
         "=========     8x8 VMOJI     =========" EOL,
         "===  binary telemetry @ 10 Hz     ===" EOL,
-        "===  commands: S G D B P Z ?      ===" EOL,
-        "=====================================" EOL,
     };
     for (size_t i = 0; i < count_of(lines); i++) {
         uart_puts(UART_LINK_ID, lines[i]);
     }
+    /* The verb list comes from the dispatch table, so it cannot go stale. It is
+     * too long for the fixed-width box, so it sits on its own line inside it. */
+    char verbs[48];
+    commands_verbs(verbs, sizeof(verbs));
+    uart_puts(UART_LINK_ID, "===  commands: ");
+    uart_puts(UART_LINK_ID, verbs);
+    uart_puts(UART_LINK_ID, EOL "=====================================" EOL);
 }
 
 void uart_link_init(void)

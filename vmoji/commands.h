@@ -93,6 +93,13 @@ bool commands_scan_paused(void);
 /** Dispatch one complete line (no newline). For unit tests. */
 void commands_dispatch_line(const char *line);
 
+/**
+ * Write every command verb, space separated ("S H G ..."), into `buf`.
+ * Built from the dispatch table, so banners and help never drift from it.
+ * Truncates to fit; returns the string length.
+ */
+size_t commands_verbs(char *buf, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

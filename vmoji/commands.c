@@ -286,17 +286,30 @@ static bool cmd_reset_counters(const char *args, char *ack, size_t ack_size)
     return true;
 }
 
+/* True if `args` is exactly `word`, optionally followed by spaces. A plain
+ * prefix match would also accept "simulate" or "povx". */
+static bool args_are_word(const char *args, const char *word)
+{
+    size_t n = strlen(word);
+    if (strncmp(args, word, n) != 0) {
+        return false;
+    }
+    for (args += n; *args == ' '; args++) {
+    }
+    return *args == '\0';
+}
+
 static bool cmd_mode(const char *args, char *ack, size_t ack_size)
 {
     while (*args == ' ') {
         args++;
     }
     AppMode mode;
-    if (strncmp(args, "static", 6) == 0) {
+    if (args_are_word(args, "static")) {
         mode = APP_MODE_STATIC;
-    } else if (strncmp(args, "pov", 3) == 0) {
+    } else if (args_are_word(args, "pov")) {
         mode = APP_MODE_POV;
-    } else if (strncmp(args, "sim", 3) == 0) {
+    } else if (args_are_word(args, "sim")) {
         mode = APP_MODE_SIM;
     } else {
         snprintf(ack, ack_size, "ERR mode static|pov|sim");
@@ -368,6 +381,27 @@ static const struct {
     {'?', cmd_query, false},
     {'I', cmd_identity, false},
 };
+
+size_t commands_verbs(char *buf, size_t size)
+{
+    if (size == 0) {
+        return 0;
+    }
+    size_t len = 0;
+    for (size_t i = 0; i < sizeof(kCommands) / sizeof(kCommands[0]); i++) {
+        /* "X" for the first verb, " X" after; stop before overflowing. */
+        size_t need = (i == 0) ? 1 : 2;
+        if (len + need >= size) {
+            break;
+        }
+        if (i > 0) {
+            buf[len++] = ' ';
+        }
+        buf[len++] = kCommands[i].verb;
+    }
+    buf[len] = '\0';
+    return len;
+}
 
 void commands_dispatch_line(const char *line)
 {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate the STLs in 3D/stl/ from the current sources. They come out in modelled orientation:
-# orient them in the slicer per "Print orientation" in 3D/README.md.
+# orient them in the slicer per docs/printing.md.
 #
 # With no arguments, every printed part is rendered and the whole stl/ folder is replaced, so stale
 # or obsolete files never survive. Parts render into a staging folder next to stl/ first: stl/ is
@@ -19,7 +19,7 @@ nproc_n="$(nproc 2>/dev/null || echo 4)"
 JOBS="${JOBS:-$((nproc_n < 4 ? nproc_n : 4))}"
 OUT_DIR="stl"
 
-# Printed parts (see "Print orientation" in README.md). fit-test is left out: coupons are printed
+# Printed parts (see docs/printing.md). fit-test is left out: coupons are printed
 # on demand, picked with its `coupon` parameter; name it explicitly to export the default set.
 PARTS=(
     motor-base
@@ -39,7 +39,7 @@ Usage: scripts/export-stl.sh [-h|--help] [part ...]
 Regenerate 3D/stl/ from the current sources. With no parts, every printed part is rendered and the
 whole stl/ folder is replaced. Named parts are re-rendered alone and the rest of stl/ is kept.
 stl/ is only touched if every render succeeds (no ERROR, WARNING or failed assert).
-STLs keep the modelled orientation: orient them per "Print orientation" in 3D/README.md.
+STLs keep the modelled orientation: orient them per docs/printing.md.
 
 Printed parts (default): ${PARTS[*]}
 On request only:         ${EXTRA_PARTS[*]}
