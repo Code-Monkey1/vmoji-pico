@@ -73,6 +73,7 @@ __pycache__/
 /vmoji/.cache
 *.stl
 *.3mf
+/3D/preview.png
 
 # VS Code workspace settings written by the Pico extension (absolute paths).
 # vmoji/.vscode is the tracked project config.
