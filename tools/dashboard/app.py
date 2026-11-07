@@ -7,16 +7,20 @@
     .venv/bin/python app.py --replay capture.vmc     # replay a recorded capture
     .venv/bin/python app.py --list-ports             # enumerate and exit
 
-With no arguments the app looks for a real board and connects to it. The
-simulator is opt-in, because a dashboard that silently shows synthetic data is
+With no arguments the app looks for a real board and connects to it. With none
+to talk to it falls back to the simulator and says so in the terminal, in the title
+bar and in a banner, because a dashboard that silently shows synthetic data is
 indistinguishable from one showing a broken board.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
+import signal
 import sys
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 import sources
@@ -102,11 +106,48 @@ def resolve_initial_source(args: argparse.Namespace) -> sources.SourceSelection:
     return sources.SIMULATOR
 
 
+NO_DISPLAY_MESSAGE = """\
+No display: the dashboard needs a graphical session to open its window.
+  - Over SSH: use ssh -X, or run it on the machine's desktop.
+  - Virtual display: xvfb-run -a .venv/bin/python app.py --sim
+  - No window at all: QT_QPA_PLATFORM=offscreen .venv/bin/python app.py --sim
+verify_link.py and walk_pixels.py need no display."""
+
+
+def has_display(env: os._Environ[str] | dict[str, str] = os.environ) -> bool:
+    """Qt aborts the process when it finds no display, with an error about plugins
+    that points at the wrong problem, so check first. QT_QPA_PLATFORM means the
+    caller has picked a platform themselves (offscreen, for instance)."""
+    return any(env.get(name) for name in ("DISPLAY", "WAYLAND_DISPLAY", "QT_QPA_PLATFORM"))
+
+
+def quit_on_ctrl_c(window) -> None:
+    """Make Ctrl+C close the window the normal way, which saves the layout and
+    finishes a recording.
+
+    Python only runs signal handlers between bytecodes, and Qt's C++ event loop
+    never returns to the interpreter on its own, so without the timer the handler
+    would wait for the next mouse move. The timer just wakes the interpreter up.
+
+    The close is queued rather than done in the handler, so it runs inside the event
+    loop: a signal arriving just before app.exec() would otherwise close the window
+    while nothing is listening for the last window closing, and the app would never quit.
+    """
+    signal.signal(signal.SIGINT, lambda *_: QTimer.singleShot(0, window.close))
+    wake = QTimer(window)
+    wake.timeout.connect(lambda: None)
+    wake.start(200)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     if args.list_ports:
         return _print_ports()
+
+    if not has_display():
+        print(NO_DISPLAY_MESSAGE, file=sys.stderr)
+        return 2
 
     selection = (
         sources.SourceSelection("replay", args.replay)
@@ -127,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         error_rate=args.error_rate,
     )
     window.show()
+    quit_on_ctrl_c(window)
 
     if args.record:
         window.start_recording(args.record)
