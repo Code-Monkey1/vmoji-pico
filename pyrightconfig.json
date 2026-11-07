@@ -1,0 +1,7 @@
+{
+  "venvPath": "tools/dashboard",
+  "venv": ".venv",
+  "include": ["tools/dashboard"],
+  "exclude": ["**/.venv", "**/__pycache__"],
+  "executionEnvironments": [{ "root": "tools/dashboard" }]
+}

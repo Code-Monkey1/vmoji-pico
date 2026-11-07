@@ -17,7 +17,8 @@ Runs, in order, and reports each:
   1. Firmware host tests (CMake + CTest in build-host-tests/, no board needed)
   2. Dashboard tests and lint (pytest + ruff, in tools/dashboard/.venv)
   3. Doc links (every relative link in README.md, AGENTS.md and docs/ must exist)
-  --cad   4. CAD collision check (3D/scripts/check-collisions.sh, several minutes)
+  4. The collision check's verdicts, against a fake OpenSCAD (seconds; no real render)
+  --cad   5. CAD collision check (3D/scripts/check-collisions.sh, several minutes)
 Exits 1 if any step fails. Missing tools? Run scripts/doctor.sh.
 EOF
             exit 0
@@ -67,6 +68,7 @@ dashboard() {
 step "Firmware host tests" host_tests
 step "Dashboard tests and lint" dashboard
 step "Doc links" python3 scripts/check-doc-links.py
+step "Collision check verdicts" 3D/scripts/test-check-collisions.sh
 [ $cad -eq 1 ] && step "CAD collision check" 3D/scripts/check-collisions.sh
 
 echo

@@ -51,6 +51,7 @@ check_firmware() {
         bad "cmake" "sudo apt install cmake"
     fi
     need_cmd ninja ninja-build
+    need_cmd python3 python3 "python3 (the SDK's build scripts use it)"
     need_cmd gcc build-essential "host C compiler (gcc)"
     need_cmd g++ build-essential "host C++ compiler (g++)"
     # With the Pico VS Code extension installed, CMakeLists.txt includes its hook, which
@@ -65,8 +66,8 @@ check_firmware() {
     local sdk_version sdk_dir picotool_version picotool=""
     sdk_version="$(sed -n 's/^set(sdkVersion \(.*\))$/\1/p' vmoji/CMakeLists.txt)"
     picotool_version="$(sed -n 's/^set(picotoolVersion \(.*\))$/\1/p' vmoji/CMakeLists.txt)"
-    # Flashing needs a picotool built with USB support: an installed one (PATH or the VS Code
-    # extension's), or the libusb headers so the SDK can build one during the firmware build.
+    # Flashing needs a picotool built with USB support. The copy the SDK builds during a firmware
+    # build never has it, so libusb headers alone are not enough (see vmoji/scripts/common.sh).
     for candidate in "$(command -v picotool 2>/dev/null)" \
         "$HOME/.pico-sdk/picotool/$picotool_version/picotool/picotool"; do
         if [ -n "$candidate" ] && [ -x "$candidate" ] && "$candidate" help load >/dev/null 2>&1; then
@@ -76,11 +77,8 @@ check_firmware() {
     done
     if [ -n "$picotool" ]; then
         ok "picotool with USB support ($picotool)"
-    elif pkg-config --exists libusb-1.0 2>/dev/null; then
-        ok "libusb headers (the SDK builds picotool with USB support)"
     else
-        bad "libusb headers (needed to build a picotool that can flash)" \
-            "sudo apt install libusb-1.0-0-dev pkg-config"
+        bad "picotool with USB support (needed to flash)" "vmoji/scripts/setup-sdk.sh"
     fi
     sdk_dir="${PICO_SDK_PATH:-$HOME/.pico-sdk/sdk/$sdk_version}"
     [ -f "$hook" ] && sdk_dir="$HOME/.pico-sdk/sdk/$sdk_version"
@@ -119,7 +117,12 @@ check_dashboard() {
     if { ldconfig -p 2>/dev/null || /sbin/ldconfig -p 2>/dev/null; } | grep -q 'libxcb-cursor.so.0'; then
         ok "libxcb-cursor0 (Qt needs it to open windows)"
     else
-        bad "libxcb-cursor0 (Qt needs it to open windows)" "sudo apt install libxcb-cursor0"
+        # Only windows need it: with no display, the tests and command-line tools still work.
+        if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+            bad "libxcb-cursor0 (Qt needs it to open windows)" "sudo apt install libxcb-cursor0"
+        else
+            warn "libxcb-cursor0 (Qt needs it to open windows)" "sudo apt install libxcb-cursor0"
+        fi
     fi
     if id -nG | tr ' ' '\n' | grep -qx dialout; then
         ok "serial port access (dialout group)"
