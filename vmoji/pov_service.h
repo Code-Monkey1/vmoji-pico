@@ -45,7 +45,6 @@ typedef struct {
     bool core_stop;
     AppMode mode;
     int volume_id;
-    RotationSnapshot last_rot;
     const PovPlatform *plat;
 } PovService;
 

@@ -134,6 +134,7 @@ struct StatusPayload {
     std::uint8_t glyph_id;
     std::uint8_t flags;
     // Appended fields: older hosts decode the 32-byte prefix and ignore these.
+    // Append only, never reorder or resize: steps in docs/telemetry.md.
     std::uint16_t rpm;
     std::uint8_t mode;              // 0 static, 1 pov, 2 sim
     std::uint8_t volume_id;

@@ -16,8 +16,9 @@ Loads $UF2_SHOWN onto a Pico connected over USB, then runs it.
 A board running vmoji is rebooted into BOOTSEL by picotool (-f), so no button press
 is needed. A blank or crashed board: hold BOOTSEL while plugging it in.
 
-picotool is looked up in this order: \$PICOTOOL, PATH, the Pico VS Code extension
-(~/.pico-sdk/picotool/$PICOTOOL_VERSION), then the copy the SDK builds into $BUILD_SHOWN.
+picotool is looked up in this order: \$PICOTOOL, PATH, then $PICOTOOL_INSTALLED
+(built by setup-sdk.sh, or installed by the Pico VS Code extension). The first one with USB
+support is used; the copy the SDK builds during a firmware build has none and cannot flash.
 EOF
         exit 0
         ;;
@@ -30,9 +31,8 @@ find_picotool() {
     for candidate in \
         "${PICOTOOL:-}" \
         "$(command -v picotool 2>/dev/null)" \
-        "$HOME/.pico-sdk/picotool/$PICOTOOL_VERSION/picotool/picotool" \
-        "$BUILD_DIR/_deps/picotool/picotool"; do
-        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+        "$PICOTOOL_INSTALLED"; do
+        if picotool_has_usb "$candidate"; then
             echo "$candidate"
             return 0
         fi
@@ -45,19 +45,9 @@ if [ ! -f "$UF2" ]; then
     exit 1
 fi
 if ! picotool="$(find_picotool)"; then
-    echo "picotool not found. Build once with vmoji/scripts/build.sh (the SDK builds it)," >&2
-    echo "or copy $UF2_SHOWN onto the RPI-RP2 drive (hold BOOTSEL while plugging in)." >&2
-    exit 1
-fi
-
-# Built without libusb headers, picotool cannot talk to USB at all ("Unknown command: load").
-if ! "$picotool" help load >/dev/null 2>&1; then
     cat >&2 <<EOF
-$picotool was built without USB support, so it cannot flash.
-Install the USB headers and rebuild (the SDK rebuilds picotool):
-  sudo apt install libusb-1.0-0-dev pkg-config
-  vmoji/scripts/build.sh --clean
-Or copy $UF2_SHOWN onto the RPI-RP2 drive (hold BOOTSEL while plugging in).
+No picotool with USB support found. Build one with vmoji/scripts/setup-sdk.sh,
+or copy $UF2_SHOWN onto the RPI-RP2 drive (hold BOOTSEL while plugging in).
 EOF
     exit 1
 fi

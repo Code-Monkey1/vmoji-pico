@@ -126,7 +126,6 @@ void pov_service_service(PovService *svc)
     if (!svc->plat->sync_take_rev(&snap)) {
         return;
     }
-    svc->last_rot = snap;
 
     svc->core_stop = false;
     svc->display_active = true;
@@ -138,9 +137,8 @@ void pov_service_service(PovService *svc)
 
 RotationSnapshot pov_service_rotation(const PovService *svc)
 {
-    if (svc->last_rot.rev_count) {
-        return svc->last_rot;
-    }
+    /* Always the live state: a snapshot kept from the last index pulse would report
+     * sync_ok long after the pulses stopped. */
     return svc->plat->sync_snapshot();
 }
 

@@ -37,7 +37,10 @@ fi
 
 # Configure once; later builds reuse the cache (also when VS Code created it).
 if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
-    cmake -S . -B "$BUILD_DIR" -G Ninja -DPICO_SDK_PATH="$SDK_DIR" || exit 1
+    # Reuse setup-sdk.sh's picotool. Otherwise the SDK builds a second copy, without USB.
+    picotool_arg=()
+    [ -x "$PICOTOOL_INSTALLED" ] && picotool_arg=("-Dpicotool_DIR=$PICOTOOL_CMAKE_DIR")
+    cmake -S . -B "$BUILD_DIR" -G Ninja -DPICO_SDK_PATH="$SDK_DIR" "${picotool_arg[@]}" || exit 1
 fi
 cmake --build "$BUILD_DIR" || exit 1
 echo "Built $UF2_SHOWN. Flash it with vmoji/scripts/flash.sh"

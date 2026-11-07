@@ -20,6 +20,15 @@ if [ -f "$VSCODE_HOOK" ]; then
     fi
     SDK_DIR="$HOME/.pico-sdk/sdk/$SDK_VERSION"
 fi
+# Built by setup-sdk.sh, or installed by the VS Code extension: same place, same layout.
+PICOTOOL_PREFIX="$HOME/.pico-sdk/picotool/$PICOTOOL_VERSION"
+PICOTOOL_CMAKE_DIR="$PICOTOOL_PREFIX/picotool"
+PICOTOOL_INSTALLED="$PICOTOOL_CMAKE_DIR/picotool"
+# The SDK's own picotool is built with -DPICOTOOL_NO_LIBUSB=1 (its Findpicotool.cmake), so it
+# only post-processes binaries: without USB support there is no `load` command at all.
+picotool_has_usb() {
+    [ -n "$1" ] && [ -x "$1" ] && "$1" help load >/dev/null 2>&1
+}
 # Override to build elsewhere (e.g. CI, tests). A relative path is relative to vmoji/.
 BUILD_DIR="${VMOJI_BUILD_DIR:-build}"
 case "$BUILD_DIR" in
