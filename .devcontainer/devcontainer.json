@@ -1,0 +1,29 @@
+// Zed opens this natively. See docs/getting-started.md for what it shares with the host and why.
+{
+  "name": "vmoji",
+  "build": { "dockerfile": "Dockerfile", "context": ".." },
+  "remoteUser": "ubuntu",
+  // A fixed path, because the Dockerfile prepares the volume folders under it.
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/vmoji,type=bind",
+  "workspaceFolder": "/workspaces/vmoji",
+  "initializeCommand": ".devcontainer/host-setup.sh",
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  // Build output stays out of the shared repo: the host's CMake caches and venv hold host paths
+  // that don't work in here, and the other way round.
+  "mounts": [
+    "source=${localWorkspaceFolderBasename}-firmware-build,target=${containerWorkspaceFolder}/vmoji/build,type=volume",
+    "source=${localWorkspaceFolderBasename}-host-tests,target=${containerWorkspaceFolder}/build-host-tests,type=volume",
+    "source=${localWorkspaceFolderBasename}-dashboard-venv,target=${containerWorkspaceFolder}/tools/dashboard/.venv,type=volume"
+  ],
+  "containerEnv": { "DISPLAY": "${localEnv:DISPLAY}" },
+  "runArgs": [
+    // The board's device nodes change each time it reboots, so a fixed --device can't follow it.
+    // The rules below decide what can be opened: USB (189), ttyACM (166) and ttyUSB (188) only.
+    "--volume=/dev:/dev",
+    "--device-cgroup-rule=c 189:* rmw",
+    "--device-cgroup-rule=c 166:* rmw",
+    "--device-cgroup-rule=c 188:* rmw",
+    // Dashboard windows, once allowed with the xhost command in the docs.
+    "--volume=/tmp/.X11-unix:/tmp/.X11-unix:ro"
+  ]
+}

@@ -1,0 +1,5 @@
+# The dev container's image only needs these. Anything more slows the build and makes unrelated
+# edits rebuild the slow SDK step.
+*
+!vmoji/CMakeLists.txt
+!vmoji/scripts/

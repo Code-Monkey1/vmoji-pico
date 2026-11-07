@@ -61,7 +61,7 @@ check_firmware() {
     if [ -f "$hook" ] && [ -x "$HOME/.pico-sdk/toolchain/$toolchain_version/bin/arm-none-eabi-gcc" ]; then
         ok "ARM cross compiler (VS Code extension, $toolchain_version)"
     else
-        need_cmd arm-none-eabi-gcc "gcc-arm-none-eabi libnewlib-arm-none-eabi" "ARM cross compiler"
+        need_cmd arm-none-eabi-gcc "gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib" "ARM cross compiler"
     fi
     local sdk_version sdk_dir picotool_version picotool=""
     sdk_version="$(sed -n 's/^set(sdkVersion \(.*\))$/\1/p' vmoji/CMakeLists.txt)"
@@ -87,7 +87,10 @@ check_firmware() {
     else
         bad "Pico SDK $sdk_version (looked in $sdk_dir)" "vmoji/scripts/setup-sdk.sh"
     fi
-    if grep -qs '2e8a' /etc/udev/rules.d/*.rules /lib/udev/rules.d/*.rules; then
+    if [ -n "${VMOJI_DEVCONTAINER:-}" ]; then
+        # The host's udev sets the board's permissions, so a rule in here could never count.
+        printf '  note    udev rule for the Pico: goes on the host, not checked here (see docs/getting-started.md)\n'
+    elif grep -qs '2e8a' /etc/udev/rules.d/*.rules /lib/udev/rules.d/*.rules; then
         ok "udev rule for the Pico (flash without sudo)"
     else
         warn "no udev rule for the Pico (picotool will need sudo)" "see docs/getting-started.md"

@@ -4,6 +4,48 @@ This sets up a Linux machine to work on every part of vmoji. The commands use `a
 (Ubuntu, Debian, Linux Mint); other distributions need the equivalent packages. macOS and
 Windows are untested.
 
+You have two ways: a dev container, which needs only Docker, or installing everything yourself,
+steps 1 to 7 below.
+
+## The quick way: a dev container
+
+[`.devcontainer/`](../.devcontainer) holds a ready-made image with everything below. It's made for
+[Zed](https://zed.dev) on a Linux host with Docker. **Status:** tested with Docker directly, using
+the same settings, and on a real board. Opening it through Zed itself is not confirmed yet.
+
+1. **To use a board,** do [step 6](#6-access-to-the-board-over-usb) once on the host. The host
+   sets the board's permissions, so this can't be done from inside the container.
+2. **Clone the repo** ([step 2](#2-get-the-code)) and open it in Zed.
+3. **Choose *Open in Container*** when Zed asks, or run *Project: Open Remote* from the command
+   palette. The first build takes a few minutes, and `scripts/doctor.sh` then reports the result
+   inside the container.
+
+From there, the build, flash, test and CAD commands in the docs work in Zed's terminal. What to know:
+
+- **Shared with the host:** the repo, the X11 socket, and `/dev`. The container can only open USB
+  and serial devices from `/dev`, not disks. It runs as a normal user, without `--privileged`.
+  There is no `sudo`, so anything needing root, like `apt install`, belongs in the `Dockerfile`.
+- **Host-only:** the udev rule, stopping ModemManager, and copying a UF2 onto the `RPI-RP2` drive.
+- **Kept apart:** `vmoji/build`, `build-host-tests` and `tools/dashboard/.venv` live in Docker
+  volumes, so builds and venvs on the host keep working.
+- **Not shared:** your SSH keys and Git config. Commit from the host, or set them up inside.
+- **Flashing a running board takes two runs.** The first `flash.sh` reboots the board into BOOTSEL,
+  then fails because the container doesn't see it come back. Run it again to finish. No button is
+  needed, and flashing from the host needs only one run.
+- **Dashboard windows:** allow them once per desktop session by running this on the host. It lets
+  anything in the container running as your user use your display, including reading your keyboard
+  input, so it's your call. `--sim` under `xvfb-run` works without it.
+
+  ```bash
+  xhost +SI:localuser:$(id -un)
+  ```
+
+- **Limits:** the container's user has UID 1000 and is in `dialout` as GID 20. A host with other
+  numbers (not the first user, or not Debian/Ubuntu) gets permission errors on the repo or the
+  serial port. Other editors that read `devcontainer.json` may work too.
+
+## Installing it yourself
+
 You only need the parts you will work on.
 
 ## 1. System packages
@@ -12,7 +54,7 @@ You only need the parts you will work on.
 sudo apt update
 sudo apt install git python3 \
     cmake ninja-build build-essential pkg-config \
-    gcc-arm-none-eabi libnewlib-arm-none-eabi libusb-1.0-0-dev \
+    gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib libusb-1.0-0-dev \
     python3-venv libxcb-cursor0 \
     openscad
 ```

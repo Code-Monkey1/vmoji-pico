@@ -21,6 +21,22 @@ Run `vmoji/scripts/setup-sdk.sh`, which builds one
 The build folder was created by a different setup. Start over with
 `vmoji/scripts/build.sh --clean`.
 
+**`flash.sh` fails in the dev container, and the board is now in BOOTSEL**
+That's expected when flashing a running board from the container. Run `flash.sh` again
+([why](getting-started.md#the-quick-way-a-dev-container)).
+
+**The dev container finds no board, or permission is denied**
+Install the udev rule on the host, not in the container, and replug the board
+([Getting started](getting-started.md#6-access-to-the-board-over-usb)).
+
+**A change to `.devcontainer/` has no effect**
+Zed doesn't rebuild on its own. Stop the container (`docker ps`, then `docker rm -f <name>`) and
+reopen the project.
+
+**The desktop says it can't find or mount `RPI-RP2`**
+Harmless while flashing. In BOOTSEL the board appears as a drive of that name, and the drive goes
+away when the board reboots, which can happen before the desktop finishes opening it.
+
 ## Serial link and dashboard
 
 **`Permission denied: '/dev/ttyACM0'`**
@@ -44,6 +60,10 @@ There is no desktop session here (SSH, a container). See
 
 **`qt.qpa.plugin: Could not load the Qt platform plugin "xcb"`**
 You do have a display, and a library Qt needs is missing: `sudo apt install libxcb-cursor0`.
+
+**`could not connect to display` in the dev container**
+The host hasn't allowed it: see the `xhost` command in
+[Getting started](getting-started.md#the-quick-way-a-dev-container).
 
 **A serial terminal shows garbage**
 That is expected: command replies travel inside the binary telemetry stream. Use

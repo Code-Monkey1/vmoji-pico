@@ -11,6 +11,8 @@ before changing an area. Start with [`docs/architecture.md`](docs/architecture.m
 - `tests/firmware/`: host-side (PC) tests for the firmware logic, no SDK or board needed.
 - `tools/dashboard/`: PySide6 telemetry dashboard. See `docs/dashboard.md`.
 - `3D/`: OpenSCAD mechanics. See `docs/mechanics.md`, `docs/printing.md`, `docs/assembly.md`.
+- `.devcontainer/`: ready-made environment for Zed. Keep its apt list in step with
+  `docs/getting-started.md`.
 - `scripts/`: repo-wide helpers. `vmoji/scripts/` and `3D/scripts/` hold area-specific ones.
   Every script has `--help`.
 

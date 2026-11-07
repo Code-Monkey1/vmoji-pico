@@ -24,7 +24,9 @@ truth.*
 ## Quick start
 
 vmoji is developed on **Linux** (Ubuntu / Linux Mint). Other systems may work but are
-untested. First install the prerequisites: see [Getting started](docs/getting-started.md).
+untested. First install the prerequisites, or open the repo in Zed's
+[dev container](docs/getting-started.md#the-quick-way-a-dev-container) to skip that: see
+[Getting started](docs/getting-started.md).
 
 ```bash
 scripts/doctor.sh             # what is missing, and how to install it
