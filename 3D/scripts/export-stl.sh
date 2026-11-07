@@ -6,9 +6,9 @@
 # or obsolete files never survive. Parts render into a staging folder next to stl/ first: stl/ is
 # only touched if all of them succeed (no ERROR, WARNING or failed assert in the OpenSCAD log).
 #
-# Usage: scripts/export-stl.sh [-h|--help] [part ...]   (default: all printed parts; e.g. rotor-head fit-test)
+# Usage: 3D/scripts/export-stl.sh [-h|--help] [part ...]   (default: all printed parts; e.g. rotor-head fit-test)
 #        Naming parts re-renders just those files and leaves the rest of stl/ alone.
-# Env:   OPENSCAD=/path/to/openscad  OPENSCAD_ARGS="--enable=manifold"  JOBS=4
+# Env:   OPENSCAD=/path/to/openscad  OPENSCAD_ARGS="..."  JOBS=4
 set -u
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 
@@ -34,7 +34,7 @@ EXTRA_PARTS=(fit-test)
 
 usage() {
     cat <<EOF
-Usage: scripts/export-stl.sh [-h|--help] [part ...]
+Usage: 3D/scripts/export-stl.sh [-h|--help] [part ...]
 
 Regenerate 3D/stl/ from the current sources. With no parts, every printed part is rendered and the
 whole stl/ folder is replaced. Named parts are re-rendered alone and the rest of stl/ is kept.
@@ -47,7 +47,7 @@ A trailing .scad is accepted (tab completion).
 
 Environment:
   OPENSCAD=/path/to/openscad          OpenSCAD binary (default: openscad)
-  OPENSCAD_ARGS="--enable=manifold"   Extra OpenSCAD flags
+  OPENSCAD_ARGS="..."                 Extra OpenSCAD flags
   JOBS=N                              Parallel renders (default: min(nproc, 4), here $JOBS)
 EOF
 }
