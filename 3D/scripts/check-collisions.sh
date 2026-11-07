@@ -2,14 +2,25 @@
 # Run every collision / soldering-iron check in collision-check.scad and fail if any
 # intersection has a real volume. Touching faces (zero volume) are OK.
 #
-# Usage: scripts/check-collisions.sh [-h|--help] [check ...]      (default: all checks)
-# Env:   OPENSCAD=/path/to/openscad  THRESHOLD_MM3=0.5  OPENSCAD_ARGS="--enable=manifold"
+# Checks run in parallel, each in its own OpenSCAD process with its own files, so they can't
+# affect each other. The result fails closed: every check must leave a result file saying it is
+# clean, so a killed worker (out of memory, for instance) fails the run instead of passing.
+#
+# Usage: 3D/scripts/check-collisions.sh [-h|--help] [check ...]      (default: all checks)
+# Env:   OPENSCAD=/path/to/openscad  THRESHOLD_MM3=0.5  OPENSCAD_ARGS="..."  JOBS=4
 set -u
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 
 OPENSCAD="${OPENSCAD:-openscad}"
 THRESHOLD_MM3="${THRESHOLD_MM3:-0.5}"
 OPENSCAD_ARGS="${OPENSCAD_ARGS:-}"
+# One job per core, within one per GB of free memory: the largest check peaks under 1 GB
+# (OpenSCAD 2021). Running out of memory couldn't pass anyway, it would only fail the run.
+nproc_n="$(nproc 2>/dev/null || echo 4)"
+mem_gb="$(awk '/MemAvailable/ {print int($2 / 1048576)}' /proc/meminfo 2>/dev/null)"
+mem_gb="${mem_gb:-4}"
+[ "$mem_gb" -lt 1 ] && mem_gb=1
+JOBS="${JOBS:-$((nproc_n < mem_gb ? nproc_n : mem_gb))}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -28,10 +39,11 @@ INFO_CHECKS=(mesh)
 
 usage() {
     cat <<EOF
-Usage: scripts/check-collisions.sh [-h|--help] [check ...]
+Usage: 3D/scripts/check-collisions.sh [-h|--help] [check ...]
 
 Run the collision / soldering-iron checks in collision-check.scad (default: all of them) and fail
 if any intersection has a real volume (> THRESHOLD_MM3). Touching faces are OK. Takes minutes.
+Rows appear as checks finish, so their order varies.
 
 Checks:
 $(printf '%s ' "${CHECKS[@]}" | fold -s -w 92 | sed 's/^/  /')
@@ -40,7 +52,9 @@ Info only (full run): ${INFO_CHECKS[*]}
 Environment:
   OPENSCAD=/path/to/openscad          OpenSCAD binary (default: openscad)
   THRESHOLD_MM3=0.5                   Largest overlap volume still counted as touching
-  OPENSCAD_ARGS="--enable=manifold"   Extra OpenSCAD flags (manifold is faster on newer builds)
+  OPENSCAD_ARGS="..."                 Extra OpenSCAD flags
+  JOBS=N                              Parallel renders (default: one per core, at most one per
+                                      GB of free memory; here $JOBS)
 EOF
 }
 
@@ -53,13 +67,18 @@ done
 
 if [ "$#" -gt 0 ]; then
     # An unknown check name renders nothing in collision-check.scad and would pass as "ok".
+    requested=()
     for arg in "$@"; do
         case " ${CHECKS[*]} ${INFO_CHECKS[*]} " in
             *" $arg "*) ;;
             *) echo "Unknown check: $arg (see --help)" >&2; exit 2 ;;
         esac
+        case " ${requested[*]:-} " in
+            *" $arg "*) ;; # Drop duplicates: two jobs would write the same files.
+            *) requested+=("$arg") ;;
+        esac
     done
-    CHECKS=("$@")
+    CHECKS=("${requested[@]}")
     INFO_CHECKS=()
 fi
 
@@ -91,6 +110,7 @@ print(f"{abs(vol):.3f}")
 PY
 }
 
+# Prints the volume, or ERROR and the reason on the lines after it.
 run_one() {
     local name="$1" out="$TMP/$1.stl" log="$TMP/$1.log"
     # shellcheck disable=SC2086
@@ -98,7 +118,7 @@ run_one() {
     local rc=$?
     if grep -qE "ERROR|Assertion" "$log"; then
         echo "ERROR"
-        grep -E "ERROR|Assertion" "$log" | head -3 >&2
+        grep -E "ERROR|Assertion" "$log" | head -3
         return
     fi
     # An empty intersection exits 1 and writes no STL (OpenSCAD 2021), so only trust "empty" when
@@ -109,33 +129,50 @@ run_one() {
     fi
     if [ $rc -ne 0 ] || [ ! -s "$out" ]; then
         echo "ERROR"
-        tail -3 "$log" >&2
+        tail -3 "$log"
         return
     fi
-    stl_volume "$out"
+    stl_volume "$out" || echo "ERROR"
 }
 
-fail=0
-printf "%-16s %12s  %s\n" "check" "volume mm3" "result"
-for c in "${CHECKS[@]}"; do
-    v="$(run_one "$c")"
-    if [ "$v" = "ERROR" ]; then
-        printf "%-16s %12s  %s\n" "$c" "-" "ERROR"
-        fail=1
+# One worker: render a check, print its row, and write "ok" as the check's last act. Anything
+# else, or no file at all, counts as a failure when the results are collected below.
+run_check() {
+    local name="$1" kind="$2" output v row
+    output="$(run_one "$name")"
+    v="$(printf '%s\n' "$output" | head -1)"
+    if [ "$kind" = "info" ]; then
+        row="$(printf "%-16s %12s  %s" "$name" "$v" "info (gear tooth overlap at rotor angle 0)")"
+        [ "$v" = "ERROR" ] && row="$row
+$(printf '%s\n' "$output" | tail -n +2)"
+    elif ! printf '%s' "$v" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+        row="$(printf "%-16s %12s  %s\n%s" "$name" "-" "ERROR" "$(printf '%s\n' "$output" | tail -n +2)")"
     elif python3 -c "import sys; sys.exit(0 if float('$v') <= float('$THRESHOLD_MM3') else 1)"; then
-        printf "%-16s %12s  %s\n" "$c" "$v" "ok"
+        row="$(printf "%-16s %12s  %s" "$name" "$v" "ok")"
+        echo "ok" >"$TMP/$name.result"
     else
-        printf "%-16s %12s  %s\n" "$c" "$v" "COLLISION"
-        fail=1
+        row="$(printf "%-16s %12s  %s" "$name" "$v" "COLLISION")"
     fi
-done
-for c in "${INFO_CHECKS[@]}"; do
-    v="$(run_one "$c")"
-    printf "%-16s %12s  %s\n" "$c" "$v" "info (gear tooth overlap at rotor angle 0)"
-done
+    # One write per check, so parallel jobs don't interleave their lines.
+    printf '%s\n' "$row"
+}
+export -f stl_volume run_one run_check
+export OPENSCAD OPENSCAD_ARGS THRESHOLD_MM3 TMP
 
-if [ $fail -ne 0 ]; then
-    echo "FAILED: see COLLISION / ERROR rows above."
+printf "%-16s %12s  %s\n" "check" "volume mm3" "result"
+{
+    for c in "${CHECKS[@]}"; do printf '%s check\n' "$c"; done
+    [ ${#INFO_CHECKS[@]} -gt 0 ] && for c in "${INFO_CHECKS[@]}"; do printf '%s info\n' "$c"; done
+} | xargs -P "$JOBS" -L 1 bash -c '(run_check "$1" "$2"); exit 0' _
+# The subshell and "exit 0": xargs stops everything when a worker dies by a signal, leaving the
+# other renders running, and the collection below already counts a dead worker as a failure.
+
+failed=()
+for c in "${CHECKS[@]}"; do
+    [ "$(cat "$TMP/$c.result" 2>/dev/null)" = "ok" ] || failed+=("$c")
+done
+if [ ${#failed[@]} -ne 0 ]; then
+    echo "FAILED: ${failed[*]}"
     exit 1
 fi
 echo "All collision checks passed."
