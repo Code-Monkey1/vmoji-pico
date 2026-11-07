@@ -11,7 +11,7 @@
   // Build output stays out of the shared repo: the host's CMake caches and venv hold host paths
   // that don't work in here, and the other way round.
   "mounts": [
-    "source=${localWorkspaceFolderBasename}-firmware-build,target=${containerWorkspaceFolder}/vmoji/build,type=volume",
+    "source=${localWorkspaceFolderBasename}-fw-build,target=${containerWorkspaceFolder}/vmoji-fw/build,type=volume",
     "source=${localWorkspaceFolderBasename}-host-tests,target=${containerWorkspaceFolder}/build-host-tests,type=volume",
     "source=${localWorkspaceFolderBasename}-dashboard-venv,target=${containerWorkspaceFolder}/tools/dashboard/.venv,type=volume"
   ],

@@ -1,7 +1,7 @@
 # Telemetry
 
 The firmware streams binary telemetry on USB and UART0 at the same time. The format is
-defined once in C++ ([`vmoji/telemetry_frame.h`](../vmoji/telemetry_frame.h)) and
+defined once in C++ ([`vmoji-fw/telemetry_frame.h`](../vmoji-fw/telemetry_frame.h)) and
 re-implemented in Python for the dashboard
 ([`tools/dashboard/protocol.py`](../tools/dashboard/protocol.py)).
 
@@ -45,8 +45,8 @@ offset  size  field
 | `0x10` | Ack | Per command | The ASCII reply to a command ([Commands](commands.md)) |
 
 The fields of `StatusPayload` and the status flags are documented where they are defined:
-[`telemetry_frame.h`](../vmoji/telemetry_frame.h) and
-[`telemetry_flags.h`](../vmoji/telemetry_flags.h). Flags that signal lost data (`OVERRUN`,
+[`telemetry_frame.h`](../vmoji-fw/telemetry_frame.h) and
+[`telemetry_flags.h`](../vmoji-fw/telemetry_flags.h). Flags that signal lost data (`OVERRUN`,
 `TX_DROP`, `FIFO_OVF`) are highlighted by the dashboard.
 
 ## Never blocking the scan
@@ -55,7 +55,7 @@ Telemetry measures the scan loop, so it must not disturb it. Frames go into per-
 buffers that drain in the background; a frame that doesn't fit is dropped whole and raises
 the `TX_DROP` flag. An early version wrote frames with blocking calls and was the largest
 source of the jitter it reported. The design notes are at the top of
-[`telemetry.cpp`](../vmoji/telemetry.cpp).
+[`telemetry.cpp`](../vmoji-fw/telemetry.cpp).
 
 ## Compatibility
 
@@ -74,9 +74,9 @@ decoded by the Python tests.
 
 To add a Status field:
 
-1. **`vmoji/telemetry_frame.h`:** append it to `StatusPayload` and update the size in its
+1. **`vmoji-fw/telemetry_frame.h`:** append it to `StatusPayload` and update the size in its
    `static_assert`.
-2. **`vmoji/telemetry.cpp`:** fill it in where `status` is built. If the value comes from
+2. **`vmoji-fw/telemetry.cpp`:** fill it in where `status` is built. If the value comes from
    elsewhere, add a setter like `telemetry_set_pov()`.
 3. **[`tools/protocol_selftest.cpp`](../tools/protocol_selftest.cpp):** set it in the sample,
    then regenerate the vectors with `tools/update-protocol-vectors.sh`.

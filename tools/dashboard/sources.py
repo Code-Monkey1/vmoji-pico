@@ -93,7 +93,7 @@ SIMULATOR = SourceSelection("sim", None)
 
 RASPBERRY_PI_VID = 0x2E8A
 PID_PICO_STDIO = 0x000A     # firmware running, telemetry on its own USB CDC
-PID_BOOTSEL = 0x0003        # RP2 boot ROM: mass storage, firmware not running
+PID_BOOTSEL = 0x0003        # RP2 boot ROM, firmware not running
 PID_DEBUG_PROBE = 0x000C    # CMSIS-DAP; its second interface bridges UART0
 
 
@@ -182,7 +182,7 @@ def list_port_candidates(include_non_usb: bool = False) -> list[PortCandidate]:
 def detect_bootsel_boards() -> list[str]:
     """Serial numbers of boards sitting in BOOTSEL.
 
-    A board in BOOTSEL enumerates as mass storage, so it never appears as a
+    A board in BOOTSEL runs only the boot ROM, so it never appears as a
     serial port. Detecting it separately turns the single most common bring-up
     mistake into a specific message instead of "no board found".
 
@@ -355,7 +355,7 @@ class SimSource:
     SETTLE_US = 5
     ROWS = protocol.MATRIX_SIZE
     LOOP_OVERHEAD_US = 40
-    ROTOR_RPM = 1000  # vmoji/rotation_sync.h ROTATION_SIM_RPM: the nominal build speed
+    ROTOR_RPM = 1000  # vmoji-fw/rotation_sync.h ROTATION_SIM_RPM: the nominal build speed
     # Mode names accepted by `M`, exactly as the firmware spells them.
     _MODE_NAMES = MappingProxyType({mode.name.lower(): mode for mode in protocol.AppMode})
 

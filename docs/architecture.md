@@ -41,13 +41,13 @@ The matrix stands upright on the rotor. Its columns sit on either side of the sp
 cylinder.
 
 Each turn is divided into angular *slices* (`ANGULAR_SLICES` in
-[`geometry.h`](../vmoji/geometry.h)). For every slice the firmware lights the voxels that
+[`geometry.h`](../vmoji-fw/geometry.h)). For every slice the firmware lights the voxels that
 belong at that angle. At around 1000 RPM a turn takes 60 ms, too fast for the eye, which
 blends the slices into one solid image.
 
 Outer columns sweep a longer path than inner ones, so they are lit longer to look equally
 bright. The codec turns each slice into a fixed number of equal-length *mux steps* and gives
-outer columns more of them ([`volume_codec.h`](../vmoji/volume_codec.h)). Every step lasts
+outer columns more of them ([`volume_codec.h`](../vmoji-fw/volume_codec.h)). Every step lasts
 the same time, so the scanner only has to know the step length:
 
 ```
@@ -69,7 +69,7 @@ Switch modes with the `M` command ([Commands](commands.md)). On power-up the boa
 
 ### The two cores
 
-**Core 0** runs one short loop ([`main.c`](../vmoji/main.c)):
+**Core 0** runs one short loop ([`main.c`](../vmoji-fw/main.c)):
 
 1. advance the boot demo, if it is running;
 2. scan the matrix (static mode) or service the POV state machine (pov/sim);
@@ -91,16 +91,16 @@ flowchart LR
     ir[IR index] --> est[Rotation estimator] -->|period| core1
 ```
 
-- **Volume** ([`volume.h`](../vmoji/volume.h)): the content, as on/off voxels per slice.
+- **Volume** ([`volume.h`](../vmoji-fw/volume.h)): the content, as on/off voxels per slice.
   It is double-buffered, so core 0 can prepare the next image while core 1 shows the
   current one. Built-in volumes live in `volumes_builtin.c`.
-- **Bake** ([`volume_codec.h`](../vmoji/volume_codec.h)): converts a volume into the list
+- **Bake** ([`volume_codec.h`](../vmoji-fw/volume_codec.h)): converts a volume into the list
   of GPIO masks for one turn.
-- **Scan** ([`pio_scan.h`](../vmoji/pio_scan.h)): applies the masks with the step length
+- **Scan** ([`pio_scan.h`](../vmoji-fw/pio_scan.h)): applies the masks with the step length
   derived from the measured period.
-- **Rotation** ([`rotation_sync.h`](../vmoji/rotation_sync.h)): the IR edge interrupt,
-  a debounce that ignores contact noise ([`ir_debounce.h`](../vmoji/ir_debounce.h)), and a
-  smoothed period estimate ([`rotation_estimator.h`](../vmoji/rotation_estimator.h)). With
+- **Rotation** ([`rotation_sync.h`](../vmoji-fw/rotation_sync.h)): the IR edge interrupt,
+  a debounce that ignores contact noise ([`ir_debounce.h`](../vmoji-fw/ir_debounce.h)), and a
+  smoothed period estimate ([`rotation_estimator.h`](../vmoji-fw/rotation_estimator.h)). With
   no index pulse for a while, sync is declared lost and the display blanks.
 
 ### Talking to a host

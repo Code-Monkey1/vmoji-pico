@@ -5,7 +5,7 @@ before changing an area. Start with [`docs/architecture.md`](docs/architecture.m
 
 ## Layout
 
-- `vmoji/`: RP2040 firmware (C/C++, Pico SDK). Core 0 handles commands, telemetry, rotation
+- `vmoji-fw/`: RP2040 firmware (C/C++, Pico SDK). Core 0 handles commands, telemetry, rotation
   sync and volume bake, and scans the matrix in static mode. Core 1 runs the PIO-paced scan in
   pov/sim mode. See `docs/firmware.md`.
 - `tests/firmware/`: host-side (PC) tests for the firmware logic, no SDK or board needed.
@@ -13,7 +13,7 @@ before changing an area. Start with [`docs/architecture.md`](docs/architecture.m
 - `3D/`: OpenSCAD mechanics. See `docs/mechanics.md`, `docs/printing.md`, `docs/assembly.md`.
 - `.devcontainer/`: ready-made environment for Zed. Keep its apt list in step with
   `docs/getting-started.md`.
-- `scripts/`: repo-wide helpers. `vmoji/scripts/` and `3D/scripts/` hold area-specific ones.
+- `scripts/`: repo-wide helpers. `vmoji-fw/scripts/` and `3D/scripts/` hold area-specific ones.
   Every script has `--help`.
 
 ## Commands
@@ -23,9 +23,9 @@ before changing an area. Start with [`docs/architecture.md`](docs/architecture.m
 - Setup problems: `scripts/doctor.sh`.
 - One host test: `ctest --test-dir build-host-tests -R <test_name>` (after `scripts/check.sh`
   has configured `build-host-tests`).
-- Firmware: `vmoji/scripts/build.sh` builds `vmoji/build/vmoji.uf2` from the CLI;
-  `vmoji/scripts/flash.sh` flashes it (needs a board, and the picotool that
-  `vmoji/scripts/setup-sdk.sh` builds). VS Code is optional.
+- Firmware: `vmoji-fw/scripts/build.sh` builds `vmoji-fw/build/vmoji.uf2` from the CLI;
+  `vmoji-fw/scripts/flash.sh` flashes it (needs a board, and the picotool that
+  `vmoji-fw/scripts/setup-sdk.sh` builds). VS Code is optional.
 - CAD: `3D/scripts/check-collisions.sh [check ...]` (slow, minutes);
   `3D/scripts/export-stl.sh [part ...]` regenerates the gitignored `3D/stl/`.
 
@@ -33,14 +33,14 @@ before changing an area. Start with [`docs/architecture.md`](docs/architecture.m
 
 - Keep logic that must be testable free of the Pico SDK, behind injected hooks, and keep
   hardware-touching code thin. New sources and host tests are registered in
-  `vmoji/CMakeLists.txt` and `tests/firmware/CMakeLists.txt` (see `docs/firmware.md`).
+  `vmoji-fw/CMakeLists.txt` and `tests/firmware/CMakeLists.txt` (see `docs/firmware.md`).
 - The telemetry wire format has two implementations (C++ and Python). Change them together,
   following the steps in `docs/telemetry.md`. Layouts are append-only: every shipped size stays
   decodable.
 - OpenSCAD parts all derive from one shared params file. The layout asserts and the collision
   script are the safety net: don't weaken or bypass them to make a build pass.
 - Coil-safe rule: no metal in the TX-RX coil gap.
-- Versions (SDK, toolchain, picotool) are set only in `vmoji/CMakeLists.txt`; scripts read them
+- Versions (SDK, toolchain, picotool) are set only in `vmoji-fw/CMakeLists.txt`; scripts read them
   from there. The toolchain pin applies only with the Pico VS Code extension; without it, builds
   use the system's `arm-none-eabi-gcc`.
 

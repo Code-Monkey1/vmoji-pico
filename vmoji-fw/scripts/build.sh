@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the firmware into vmoji/build/vmoji.uf2.
+# Build the firmware into vmoji-fw/build/vmoji.uf2.
 #
-# Usage: vmoji/scripts/build.sh [-h|--help] [--clean]
+# Usage: vmoji-fw/scripts/build.sh [-h|--help] [--clean]
 # Env:   PICO_SDK_PATH=/path/to/pico-sdk   (default: ~/.pico-sdk/sdk/<version>)
 set -u
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
@@ -12,7 +12,7 @@ for arg in "$@"; do
     case "$arg" in
         -h | --help)
             cat <<EOF
-Usage: vmoji/scripts/build.sh [-h|--help] [--clean]
+Usage: vmoji-fw/scripts/build.sh [-h|--help] [--clean]
 
 Configures (first time) and builds the firmware with CMake + Ninja.
 Output: $UF2_SHOWN
@@ -30,7 +30,7 @@ EOF
 done
 
 if [ ! -f "$SDK_DIR/pico_sdk_init.cmake" ]; then
-    echo "No Pico SDK at $SDK_DIR. Run vmoji/scripts/setup-sdk.sh (or set PICO_SDK_PATH)." >&2
+    echo "No Pico SDK at $SDK_DIR. Run vmoji-fw/scripts/setup-sdk.sh (or set PICO_SDK_PATH)." >&2
     exit 1
 fi
 [ $clean -eq 1 ] && rm -rf "$BUILD_DIR"
@@ -43,4 +43,4 @@ if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
     cmake -S . -B "$BUILD_DIR" -G Ninja -DPICO_SDK_PATH="$SDK_DIR" "${picotool_arg[@]}" || exit 1
 fi
 cmake --build "$BUILD_DIR" || exit 1
-echo "Built $UF2_SHOWN. Flash it with vmoji/scripts/flash.sh"
+echo "Built $UF2_SHOWN. Flash it with vmoji-fw/scripts/flash.sh"

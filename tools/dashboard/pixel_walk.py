@@ -39,7 +39,7 @@ def walk_order() -> list[tuple[int, int]]:
     """Top-left to bottom-right, row by row, in firmware (row, col) indices.
 
     Firmware row 0 is the physical top and column 0 the left: checked on the
-    board with this walk, see board_row_pins() in vmoji/board_pins.h.
+    board with this walk, see board_row_pins() in vmoji-fw/board_pins.h.
     """
     size = protocol.MATRIX_SIZE
     return [(row, col) for row in range(size) for col in range(size)]

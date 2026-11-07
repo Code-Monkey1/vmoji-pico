@@ -11,4 +11,4 @@ case "${1:-}" in
     -h | --help) sed -n '2,8p' "$0" | cut -c3-; exit 0 ;;
 esac
 cd "$(dirname "$(readlink -f "$0")")/.."
-mkdir -p vmoji/build build-host-tests tools/dashboard/.venv
+mkdir -p vmoji-fw/build build-host-tests tools/dashboard/.venv

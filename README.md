@@ -14,7 +14,7 @@ truth.*
 
 | Folder | Contents |
 |--------|----------|
-| [`vmoji/`](vmoji) | Firmware: C/C++ on the Pico SDK |
+| [`vmoji-fw/`](vmoji-fw) | Firmware: C/C++ on the Pico SDK |
 | [`tests/firmware/`](tests/firmware) | Firmware logic tests that run on your PC |
 | [`tools/dashboard/`](tools/dashboard) | Desktop telemetry dashboard (Python, PySide6) |
 | [`3D/`](3D) | 3D-printable mechanics (OpenSCAD) |
@@ -30,9 +30,9 @@ untested. First install the prerequisites, or open the repo in Zed's
 
 ```bash
 scripts/doctor.sh             # what is missing, and how to install it
-vmoji/scripts/setup-sdk.sh    # Pico SDK (once)
-vmoji/scripts/build.sh        # -> vmoji/build/vmoji.uf2
-vmoji/scripts/flash.sh        # over USB
+vmoji-fw/scripts/setup-sdk.sh    # Pico SDK (once)
+vmoji-fw/scripts/build.sh        # -> vmoji-fw/build/vmoji.uf2
+vmoji-fw/scripts/flash.sh        # over USB
 ```
 
 No hardware? The dashboard has a built-in simulator:

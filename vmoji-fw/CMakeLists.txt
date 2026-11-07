@@ -115,6 +115,12 @@ pico_enable_stdio_uart(vmoji 0)
 # case that a stalled host can inflict on the display.
 target_compile_definitions(vmoji PRIVATE PICO_STDIO_USB_STDOUT_TIMEOUT_US=1000)
 
+# flash.sh reboots a running board into BOOTSEL. Without this, each time the board also appears as
+# the RPI-RP2 drive, the desktop tries to mount it, and the reboot that follows pulls it away mid-
+# mount, with error pop-ups. Bit 0 hides the drive on these reboots only: picotool's interface stays,
+# and holding the BOOTSEL button still shows the drive.
+target_compile_definitions(vmoji PRIVATE PICO_USB_RESET_BOOTSEL_INTERFACE_DISABLE_MASK=1)
+
 # create map/bin/hex file etc.
 pico_add_extra_outputs(vmoji)
 

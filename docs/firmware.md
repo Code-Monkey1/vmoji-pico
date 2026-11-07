@@ -1,38 +1,39 @@
 # Firmware
 
-The firmware in [`vmoji/`](../vmoji) targets a Raspberry Pi Pico (RP2040, `PICO_BOARD
+The firmware in [`vmoji-fw/`](../vmoji-fw) targets a Raspberry Pi Pico (RP2040, `PICO_BOARD
 pico`) and builds with the Pico SDK. For how it works, read [Architecture](architecture.md)
 first. Setup: [Getting started](getting-started.md).
 
 ## Build
 
 ```bash
-vmoji/scripts/build.sh            # configure (first time) and build
-vmoji/scripts/build.sh --clean    # start from scratch
+vmoji-fw/scripts/build.sh            # configure (first time) and build
+vmoji-fw/scripts/build.sh --clean    # start from scratch
 ```
 
-The output is `vmoji/build/vmoji.uf2`. The SDK, toolchain and picotool versions are pinned
-in [`vmoji/CMakeLists.txt`](../vmoji/CMakeLists.txt) (`sdkVersion`, `toolchainVersion`,
+The output is `vmoji-fw/build/vmoji.uf2`. The SDK, toolchain and picotool versions are pinned
+in [`vmoji-fw/CMakeLists.txt`](../vmoji-fw/CMakeLists.txt) (`sdkVersion`, `toolchainVersion`,
 `picotoolVersion`). The scripts read them from there.
 
 Without the script, it is plain CMake (the [VS Code extension](getting-started.md#optional-vs-code)
 changes which SDK it uses):
 
 ```bash
-cmake -S vmoji -B vmoji/build -G Ninja -DPICO_SDK_PATH=$HOME/.pico-sdk/sdk/<version>
-cmake --build vmoji/build
+cmake -S vmoji-fw -B vmoji-fw/build -G Ninja -DPICO_SDK_PATH=$HOME/.pico-sdk/sdk/<version>
+cmake --build vmoji-fw/build
 ```
 
 ## Flash
 
 ```bash
-vmoji/scripts/flash.sh
+vmoji-fw/scripts/flash.sh
 ```
 
 This loads the UF2 with the `picotool` from `setup-sdk.sh` and starts it. A board that is
 running vmoji reboots into its bootloader on its own; a blank or crashed board needs the
 BOOTSEL button held while you plug it in. Without picotool, hold BOOTSEL while plugging in and
-copy `vmoji/build/vmoji.uf2` onto the `RPI-RP2` drive that appears.
+copy `vmoji-fw/build/vmoji.uf2` onto the `RPI-RP2` drive that appears. That drive only shows up for
+the button: the reboot `flash.sh` triggers hides it, so the desktop doesn't try to mount it.
 
 To confirm what is on the board, send `I`: its `sha=` is the commit the firmware was built from
 ([Commands](commands.md)).
@@ -82,7 +83,7 @@ ctest --test-dir build-host-tests -R pov_service         # only tests matching a
 ### Adding a source file
 
 1. Add it to `add_executable(vmoji ...)` and to the `-Wall;-Wextra` list in
-   [`vmoji/CMakeLists.txt`](../vmoji/CMakeLists.txt).
+   [`vmoji-fw/CMakeLists.txt`](../vmoji-fw/CMakeLists.txt).
 2. If it is SDK-free logic, also add it to `vmoji_host_core` in
    [`tests/firmware/CMakeLists.txt`](../tests/firmware/CMakeLists.txt), then add a test
    with `vmoji_add_test(<name> unit/<file>.c)`.

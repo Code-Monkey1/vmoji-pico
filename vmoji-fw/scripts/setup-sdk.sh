@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Download the Raspberry Pi Pico SDK and build picotool (with USB support, so it can flash),
-# at the versions vmoji/CMakeLists.txt pins.
+# at the versions vmoji-fw/CMakeLists.txt pins.
 #
-# Usage: vmoji/scripts/setup-sdk.sh [-h|--help]
+# Usage: vmoji-fw/scripts/setup-sdk.sh [-h|--help]
 # Env:   PICO_SDK_PATH=/where/to/put/it   (default: ~/.pico-sdk/sdk/<version>)
 set -u
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
@@ -11,9 +11,9 @@ cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
 case "${1:-}" in
     -h | --help)
         cat <<EOF
-Usage: vmoji/scripts/setup-sdk.sh [-h|--help]
+Usage: vmoji-fw/scripts/setup-sdk.sh [-h|--help]
 
-1. Clones pico-sdk $SDK_VERSION (sdkVersion in vmoji/CMakeLists.txt), with its submodules,
+1. Clones pico-sdk $SDK_VERSION (sdkVersion in vmoji-fw/CMakeLists.txt), with its submodules,
    into $SDK_DIR
    Override with PICO_SDK_PATH.
 2. Builds picotool $PICOTOOL_VERSION (picotoolVersion) with USB support, which flash.sh needs,
@@ -98,4 +98,4 @@ setup_picotool() {
 
 setup_sdk || exit 1
 setup_picotool || exit 1
-echo "Done. Build the firmware with vmoji/scripts/build.sh"
+echo "Done. Build the firmware with vmoji-fw/scripts/build.sh"

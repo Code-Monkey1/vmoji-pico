@@ -28,7 +28,7 @@ If the board isn't `/dev/ttyACM0`, `.venv/bin/python app.py --list-ports` shows 
 4. **Orientation:** run the pixel walk (dashboard *Pixel walk* panel, or
    `walk_pixels.py --port /dev/ttyACM0 --step`). The first LED (`r0 c0`) must be the
    physical top-left, then left to right and row by row downwards. If not, fix the order in
-   [`vmoji/board_pins.h`](../vmoji/board_pins.h): `board_row_pins()` if it's upside down,
+   [`vmoji-fw/board_pins.h`](../vmoji-fw/board_pins.h): `board_row_pins()` if it's upside down,
    `board_col_pins()` if it's mirrored.
 
 ## 2. Simulated POV (no spinning needed)
@@ -36,10 +36,10 @@ If the board isn't `/dev/ttyACM0`, `.venv/bin/python app.py --list-ports` shows 
 1. `send "M sim"`, then `send "V 1"` (the asymmetric L).
 2. `send "?"`: expect `mode=sim`, with `rpm` and `period` at the fixed simulated rate
    (`ROTATION_SIM_RPM`, `ROTATION_SIM_PERIOD_US` in
-   [`vmoji/rotation_sync.h`](../vmoji/rotation_sync.h)).
+   [`vmoji-fw/rotation_sync.h`](../vmoji-fw/rotation_sync.h)).
 3. On a stationary board the slices blur together, but the lit rows should be the bottom
    ones (the L's foot) plus the top one (a marker voxel). Upside down means the row/height
-   flip, `geometry_row_to_z()` in [`vmoji/geometry.h`](../vmoji/geometry.h), is wrong for this
+   flip, `geometry_row_to_z()` in [`vmoji-fw/geometry.h`](../vmoji-fw/geometry.h), is wrong for this
    mount.
 4. Optional, with a logic analyzer on a column GPIO: blank, settle
    (`MATRIX_BLANK_SETTLE_US`), then lit dwell, repeating once per mux step. A step lasts
@@ -66,7 +66,7 @@ each other, and the mode stays set when `send` exits.
      starting value, `ROTATION_SIM_RPM`. The readout flashes that number between "no sync"
      warnings, and the plot draws it. **It is not a measurement.**
 
-   The limits are in [`vmoji/rotation_estimator.h`](../vmoji/rotation_estimator.h). For a real
+   The limits are in [`vmoji-fw/rotation_estimator.h`](../vmoji-fw/rotation_estimator.h). For a real
    rpm, the pencil has to beat the second limit in a steady rhythm.
 5. Stop the pulses: within `ROT_EST_SYNC_LOSS_US` the display blanks and `SYNC OK` goes out.
 6. The dashboard's *Flags* readout must not show `FIFO OVF` during normal operation.

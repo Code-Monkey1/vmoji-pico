@@ -27,14 +27,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # The folders are for the named volumes in devcontainer.json: a new volume copies its owner from
 # the folder it mounts over, so they belong to this user with no chown needed.
 RUN usermod --append --groups dialout ubuntu \
-    && install -d -o ubuntu -g ubuntu /workspaces/vmoji/vmoji/build \
+    && install -d -o ubuntu -g ubuntu /workspaces/vmoji/vmoji-fw/build \
         /workspaces/vmoji/build-host-tests /workspaces/vmoji/tools/dashboard/.venv
 
 USER ubuntu
 
 # Only these files, so this slow step reruns only when the versions or the scripts change.
-COPY --chown=ubuntu vmoji/CMakeLists.txt /tmp/vmoji-setup/CMakeLists.txt
-COPY --chown=ubuntu vmoji/scripts /tmp/vmoji-setup/scripts
+COPY --chown=ubuntu vmoji-fw/CMakeLists.txt /tmp/vmoji-setup/CMakeLists.txt
+COPY --chown=ubuntu vmoji-fw/scripts /tmp/vmoji-setup/scripts
 RUN /tmp/vmoji-setup/scripts/setup-sdk.sh && rm -rf /tmp/vmoji-setup
 
 # The known-good BOSL2 from docs/getting-started.md: its master can break the models.

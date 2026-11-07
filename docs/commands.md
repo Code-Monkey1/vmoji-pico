@@ -2,7 +2,7 @@
 
 The board accepts short ASCII command lines on USB and on UART0. Each line is one letter,
 optionally followed by arguments, ending in `\n` (`\r` is ignored). The grammar is defined
-in [`vmoji/commands.h`](../vmoji/commands.h), which wins if this page ever disagrees.
+in [`vmoji-fw/commands.h`](../vmoji-fw/commands.h), which wins if this page ever disagrees.
 
 ## Sending commands
 

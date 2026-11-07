@@ -5,10 +5,10 @@ Start with `scripts/doctor.sh`: it finds most setup problems and prints the fix.
 ## Firmware
 
 **`No Pico SDK at ...`**
-Run `vmoji/scripts/setup-sdk.sh`, or point `PICO_SDK_PATH` at an existing SDK checkout.
+Run `vmoji-fw/scripts/setup-sdk.sh`, or point `PICO_SDK_PATH` at an existing SDK checkout.
 
 **`No picotool with USB support found`**
-Run `vmoji/scripts/setup-sdk.sh`, which builds one
+Run `vmoji-fw/scripts/setup-sdk.sh`, which builds one
 ([why it's separate](getting-started.md#3-firmware-the-pico-sdk-and-picotool)).
 
 **Flashing fails: no device found, or permission denied**
@@ -19,11 +19,7 @@ Run `vmoji/scripts/setup-sdk.sh`, which builds one
 
 **CMake complains about the generator or the cache**
 The build folder was created by a different setup. Start over with
-`vmoji/scripts/build.sh --clean`.
-
-**`flash.sh` fails in the dev container, and the board is now in BOOTSEL**
-That's expected when flashing a running board from the container. Run `flash.sh` again
-([why](getting-started.md#the-quick-way-a-dev-container)).
+`vmoji-fw/scripts/build.sh --clean`.
 
 **The dev container finds no board, or permission is denied**
 Install the udev rule on the host, not in the container, and replug the board
@@ -34,8 +30,9 @@ Zed doesn't rebuild on its own. Stop the container (`docker ps`, then `docker rm
 reopen the project.
 
 **The desktop says it can't find or mount `RPI-RP2`**
-Harmless while flashing. In BOOTSEL the board appears as a drive of that name, and the drive goes
-away when the board reboots, which can happen before the desktop finishes opening it.
+Harmless. A board in BOOTSEL by button appears as a drive of that name, and the drive goes away when
+it reboots, which can happen before the desktop finishes opening it. `flash.sh` doesn't show the
+drive on a board already running vmoji.
 
 ## Serial link and dashboard
 

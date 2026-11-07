@@ -1,6 +1,6 @@
-# Shared by the firmware scripts (sourced, not run). Expects the caller to have cd'd to vmoji/.
+# Shared by the firmware scripts (sourced, not run). Expects the caller to have cd'd to vmoji-fw/.
 #
-# Versions come from vmoji/CMakeLists.txt, the one place they are set (the Pico VS Code
+# Versions come from vmoji-fw/CMakeLists.txt, the one place they are set (the Pico VS Code
 # extension reads the same lines), so scripts and IDE never disagree.
 
 cmake_var() {
@@ -29,7 +29,7 @@ PICOTOOL_INSTALLED="$PICOTOOL_CMAKE_DIR/picotool"
 picotool_has_usb() {
     [ -n "$1" ] && [ -x "$1" ] && "$1" help load >/dev/null 2>&1
 }
-# Override to build elsewhere (e.g. CI, tests). A relative path is relative to vmoji/.
+# Override to build elsewhere (e.g. CI, tests). A relative path is relative to vmoji-fw/.
 BUILD_DIR="${VMOJI_BUILD_DIR:-build}"
 case "$BUILD_DIR" in
     "" | . | .. | / | ./ | ../)
@@ -41,11 +41,11 @@ UF2="$BUILD_DIR/vmoji.uf2"
 # For messages: relative to the repo root unless the build dir was given as an absolute path.
 case "$BUILD_DIR" in
     /*) BUILD_SHOWN="$BUILD_DIR" ;;
-    *) BUILD_SHOWN="vmoji/$BUILD_DIR" ;;
+    *) BUILD_SHOWN="vmoji-fw/$BUILD_DIR" ;;
 esac
 UF2_SHOWN="$BUILD_SHOWN/vmoji.uf2"
 
 if [ -z "$SDK_VERSION" ]; then
-    echo "Could not read sdkVersion from vmoji/CMakeLists.txt" >&2
+    echo "Could not read sdkVersion from vmoji-fw/CMakeLists.txt" >&2
     exit 1
 fi

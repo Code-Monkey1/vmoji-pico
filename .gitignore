@@ -70,11 +70,11 @@ __pycache__/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #cmake-build-*
 /tools/venv
-/vmoji/.cache
+/vmoji-fw/.cache
 *.stl
 *.3mf
 /3D/preview.png
 
 # VS Code workspace settings written by the Pico extension (absolute paths).
-# vmoji/.vscode is the tracked project config.
+# vmoji-fw/.vscode is the tracked project config.
 /.vscode/
