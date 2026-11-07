@@ -78,6 +78,20 @@ int main(void)
     pov_service_service(&svc);
     TEST_CHECK(st.start_count > starts);
     TEST_CHECK(pov_service_display_active(&svc));
+    pov_service_release_scan(&svc);
+
+    /* Telemetry reports the live rotation state, not the one kept from the last pulse. */
+    TEST_CHECK(pov_service_rotation(&svc).sync_ok);
+    fake_time_advance(ROT_EST_SYNC_LOSS_US + 1ull);
+    pov_service_service(&svc);
+    TEST_CHECK(!pov_service_rotation(&svc).sync_ok);
+
+    fake_platform_push_edge(&st, fake_time_now_us());
+    pov_service_service(&svc);
+    pov_service_release_scan(&svc);
+    TEST_CHECK(pov_service_rotation(&svc).sync_ok);
+    pov_service_set_mode(&svc, APP_MODE_STATIC);
+    TEST_CHECK(!pov_service_rotation(&svc).sync_ok);
 
     return test_finish("pov_service");
 }

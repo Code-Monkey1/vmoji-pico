@@ -33,5 +33,27 @@ int main(void)
     /* Sticky: a second check while still timed out does not re-fire. */
     TEST_CHECK(!rotation_estimator_check_loss(&e, e.last_edge_us + 400000ull));
 
+    /* Hand speed (docs/bring-up.md): a gap past the sync-loss limit but within the period
+     * limit drops sync between pulses, yet still moves the speed estimate. */
+    RotationEstimator hand;
+    rotation_estimator_init(&hand, ROTATION_SIM_PERIOD_US);
+    uint64_t t = 1000000ull;
+    const uint32_t medium_gap = (ROT_EST_SYNC_LOSS_US + ROT_EST_MAX_PERIOD_US) / 2u;
+    for (int i = 0; i < 40; i++) {
+        rotation_estimator_note_edge(&hand, t);
+        TEST_CHECK(hand.sync_ok);
+        TEST_CHECK(rotation_estimator_check_loss(&hand, t + ROT_EST_SYNC_LOSS_US + 1ull));
+        t += medium_gap;
+    }
+    TEST_CHECK(hand.period_us > medium_gap - 10u && hand.period_us <= medium_gap);
+
+    /* Slower than the period limit: sync still flashes on each pulse, but the estimate
+     * ignores the gap, so rpm keeps its previous value. */
+    uint32_t held = hand.period_us;
+    t += ROT_EST_MAX_PERIOD_US + 1u;
+    rotation_estimator_note_edge(&hand, t);
+    TEST_CHECK(hand.sync_ok);
+    TEST_CHECK_EQ_U32(hand.period_us, held);
+
     return test_finish("rotation_estimator");
 }

@@ -4,6 +4,8 @@ project(vmoji_firmware_tests C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
+# For clangd: see tests/firmware/.clangd.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 enable_testing()
 

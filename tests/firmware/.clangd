@@ -1,0 +1,4 @@
+# These files build for the PC, in build-host-tests/ (scripts/check.sh configures it), which clangd
+# wouldn't find on its own. Without this, every test file reports 'test_harness.h' file not found.
+CompileFlags:
+  CompilationDatabase: ../../build-host-tests
