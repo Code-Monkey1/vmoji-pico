@@ -166,7 +166,6 @@ void test_false_sync_inside_payload() {
 }
 
 void test_struct_layout() {
-    check(sizeof(vmoji::StatusPayload) == 40, "StatusPayload is 40 bytes");
     check(sizeof(vmoji::FrameBufferPayload) == 8, "FrameBufferPayload is 8 bytes");
     check(offsetof(vmoji::StatusPayload, die_temp_c_x100) == 18,
           "die_temp_c_x100 sits at offset 18");

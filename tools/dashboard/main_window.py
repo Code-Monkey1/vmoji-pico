@@ -51,6 +51,7 @@ import protocol
 import reader as reader_module
 import reconnect
 import sources
+import theme
 from sources import SourceSelection
 from widgets import KeyValuePanel, MatrixView
 
@@ -60,16 +61,6 @@ PORT_RESCAN_INTERVAL_MS = 2000
 SEEK_RESOLUTION = 1000  # slider steps across the whole capture
 
 
-def _apply_dark_theme() -> None:
-    """A dark palette because this is a monitoring tool that sits open all day,
-    and pyqtgraph defaults to a white canvas that is punishing next to it."""
-    pg.setConfigOptions(
-        antialias=False,  # off by design: dense polylines cost more than they gain
-        background="#1b1d22",
-        foreground="#c8ccd4",
-    )
-
-
 WINDOW_TITLE = "vmoji telemetry dashboard"
 
 
@@ -77,7 +68,7 @@ class MainWindow(QMainWindow):
     def __init__(self, initial_selection: SourceSelection = sources.SIMULATOR,
                  baudrate: int = 115200, error_rate: float = 0.0) -> None:
         super().__init__()
-        _apply_dark_theme()
+        theme.apply_theme()
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(1440, 900)
 
@@ -158,7 +149,8 @@ class MainWindow(QMainWindow):
         banner = QLabel("SIMULATION - synthetic data, no hardware connected")
         banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         banner.setStyleSheet(
-            "background-color: #7a4a12; color: #ffd9a0; font-weight: bold;"
+            f"background-color: {theme.BANNER_BACKGROUND}; color: {theme.BANNER_TEXT};"
+            " font-weight: bold;"
             " padding: 4px; border-radius: 3px;"
         )
         banner.setVisible(False)
@@ -297,31 +289,33 @@ class MainWindow(QMainWindow):
         layout.addLayout(controls)
 
         self.plot_refresh = self._make_plot("Refresh rate", "Hz")
-        self.curve_refresh = self.plot_refresh.plot(pen=pg.mkPen("#5ec8ff", width=2))
+        self.curve_refresh = self.plot_refresh.plot(pen=pg.mkPen(theme.SERIES_REFRESH, width=2))
 
         # Rotor speed from the IR index: the health signal for the spinning display.
         self.plot_rpm = self._make_plot("Rotor speed", "RPM")
-        self.curve_rpm = self.plot_rpm.plot(pen=pg.mkPen("#63e6be", width=2))
+        self.curve_rpm = self.plot_rpm.plot(pen=pg.mkPen(theme.SERIES_RPM, width=2))
 
         self.plot_period = self._make_plot("Scan period", "us")
         self.plot_period.addLegend(offset=(-10, 10), labelTextSize="8pt")
         self.curve_period_max = self.plot_period.plot(
-            pen=pg.mkPen("#ff6b6b", width=1), name="max"
+            pen=pg.mkPen(theme.SERIES_PERIOD_MAX, width=1), name="max"
         )
         self.curve_period_mean = self.plot_period.plot(
-            pen=pg.mkPen("#ffd166", width=2), name="mean"
+            pen=pg.mkPen(theme.SERIES_PERIOD_MEAN, width=2), name="mean"
         )
         self.curve_period_min = self.plot_period.plot(
-            pen=pg.mkPen("#8ce99a", width=1), name="min"
+            pen=pg.mkPen(theme.SERIES_PERIOD_MIN, width=1), name="min"
         )
 
         self.plot_jitter = self._make_plot("Loop jitter (peak-to-peak)", "us")
         self.curve_jitter = self.plot_jitter.plot(
-            pen=pg.mkPen("#c084fc", width=2), fillLevel=0, brush=(192, 132, 252, 40)
+            pen=pg.mkPen(theme.SERIES_JITTER, width=2),
+            fillLevel=0,
+            brush=theme.SERIES_JITTER_FILL,
         )
 
         self.plot_temp = self._make_plot("Die temperature", "C")
-        self.curve_temp = self.plot_temp.plot(pen=pg.mkPen("#ffa94d", width=2))
+        self.curve_temp = self.plot_temp.plot(pen=pg.mkPen(theme.SERIES_TEMPERATURE, width=2))
 
         # One shared x-axis: correlating a jitter spike against a temperature or
         # rate change is the entire reason these plots sit on one screen.
@@ -363,7 +357,7 @@ class MainWindow(QMainWindow):
         # samples are rasterised, so a long capture stays interactive.
         plot.setDownsampling(auto=True, mode="peak")
         plot.setClipToView(True)
-        plot.getPlotItem().titleLabel.setText(title, size="9pt", color="#c8ccd4")
+        plot.getPlotItem().titleLabel.setText(title, size="9pt", color=theme.PLOT_FOREGROUND)
         return plot
 
     def _build_side_panel(self) -> QWidget:

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 import panels
 import protocol
+import theme
 
 
 class MatrixView(QWidget):
@@ -32,9 +33,9 @@ class MatrixView(QWidget):
     bring-up.
     """
 
-    LED_ON = QColor(255, 96, 64)
-    LED_OFF = QColor(38, 40, 46)
-    GRID = QColor(58, 62, 70)
+    LED_ON = QColor(*theme.LED_ON)
+    LED_OFF = QColor(*theme.LED_OFF)
+    GRID = QColor(*theme.LED_GRID)
     SIZE = protocol.MATRIX_SIZE
 
     @classmethod
@@ -89,7 +90,7 @@ class MatrixView(QWidget):
                     glow = QRadialGradient(centre_x, centre_y, radius * 1.9)
                     glow.setColorAt(0.0, self.LED_ON)
                     glow.setColorAt(0.45, self.LED_ON.darker(130))
-                    glow.setColorAt(1.0, QColor(255, 96, 64, 0))
+                    glow.setColorAt(1.0, QColor(*theme.LED_ON, 0))
                     painter.setBrush(glow)
                     painter.setPen(Qt.PenStyle.NoPen)
                     painter.drawEllipse(
@@ -111,8 +112,8 @@ class KeyValuePanel(QFrame):
     widgets at the repaint rate is the classic way to make a Qt dashboard slow.
     """
 
-    NORMAL_STYLE = "color: #e6e8ec;"
-    WARN_STYLE = "color: #ffb347;"
+    NORMAL_STYLE = f"color: {theme.TEXT};"
+    WARN_STYLE = f"color: {theme.WARNING};"
 
     def __init__(self, keys: Sequence[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -131,7 +132,7 @@ class KeyValuePanel(QFrame):
         self._warned: dict[str, bool] = {}
         for row, key in enumerate(keys):
             name = QLabel(key)
-            name.setStyleSheet("color: #9aa0aa;")
+            name.setStyleSheet(f"color: {theme.TEXT_MUTED};")
             value = QLabel("--")
             value.setFont(value_font)
             value.setStyleSheet(self.NORMAL_STYLE)

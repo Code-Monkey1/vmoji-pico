@@ -117,21 +117,89 @@ def test_decodes_cpp_status_vector():
         assert getattr(status, name) == expected, name
 
 
-def test_a_legacy_32_byte_status_still_decodes():
-    """Older firmware and old captures send only the original prefix."""
+# Every Status size firmware has ever sent. APPEND ONLY: a size listed here exists in
+# boards and captures forever, so the decoder must keep reading it.
+SHIPPED_STATUS_SIZES = (32, 40)
+
+_FROZEN_PREFIX_FIELDS = dict(
+    uptime_ms=123456,
+    scan_count=98765,
+    refresh_chz=31250,
+    period_mean_us=3200,
+    period_min_us=3180,
+    period_max_us=3410,
+    jitter_pp_us=230,
+    die_temp_c_x100=2731,
+    cmd_ok=12,
+    cmd_err=3,
+    rx_bytes=4096,
+    row_dwell_us=400,
+    glyph_id=2,
+    flags=int(protocol.StatusFlag.ACTIVITY),
+)
+_FROZEN_POV_FIELDS = dict(
+    rpm=1000,
+    mode=int(protocol.AppMode.SIM),
+    volume_id=1,
+    rev_period_us=60000,
+)
+
+# One real frame of each shipped size and what it holds, frozen as bytes. Never regenerate or
+# edit these: they are not derived from the current code, which is what makes them a
+# compatibility test. When a release adds a size, add its frame from the then-current vector.
+FROZEN_STATUS_FRAMES = {
+    32: (
+        "aa552000010740e20100cd810100127a800c6c0c520de600ab0a0c0003000010000090010201eaf0",
+        _FROZEN_PREFIX_FIELDS,
+    ),
+    40: (
+        "aa552800010740e20100cd810100127a800c6c0c520de600ab0a0c0003000010000090010201"
+        "e803020160ea00005010",
+        {**_FROZEN_PREFIX_FIELDS, **_FROZEN_POV_FIELDS},
+    ),
+}
+
+
+def test_shipped_status_layouts_are_only_ever_appended_to():
+    """Fails if a change edits a shipped layout instead of adding a new one, or adds a
+    size without recording it here."""
+    assert protocol.STATUS_SIZES == SHIPPED_STATUS_SIZES
+    assert tuple(FROZEN_STATUS_FRAMES) == SHIPPED_STATUS_SIZES
+
+
+@pytest.mark.parametrize("size", SHIPPED_STATUS_SIZES)
+def test_every_shipped_status_size_still_decodes(size):
+    """Older firmware and old captures keep their size forever. Everything they sent
+    decodes as they sent it, and everything appended later reads None, not garbage."""
+    frame, known_fields = FROZEN_STATUS_FRAMES[size]
     parser = protocol.FrameParser(clock=lambda: 0.0)
-    legacy = protocol.encode_frame(protocol.MsgId.STATUS, 7, CPP_STATUS_PAYLOAD[:32])
-    (status,) = parser.feed(legacy)
+    (status,) = parser.feed(bytes.fromhex(frame))
 
     assert isinstance(status, protocol.Status)
+    for field in dataclasses.fields(protocol.Status):
+        if field.name in ("host_time", "seq"):
+            continue
+        assert getattr(status, field.name) == known_fields.get(field.name), field.name
+
+
+@pytest.mark.parametrize("extra", [1, 3, 7])
+def test_a_size_between_layouts_decodes_the_layout_that_fits(extra):
+    payload = CPP_STATUS_PAYLOAD[:32] + b"\xee" * extra
+    frame = protocol.encode_frame(protocol.MsgId.STATUS, 1, payload)
+    (status,) = protocol.FrameParser().feed(frame)
+
     assert status.uptime_ms == 123456
-    assert status.flags == int(protocol.StatusFlag.ACTIVITY)
-    assert (status.rpm, status.mode, status.volume_id, status.rev_period_us) == (
-        None,
-        None,
-        None,
-        None,
-    )
+    assert status.rpm is None
+
+
+def test_a_longer_status_decodes_what_this_host_knows():
+    """Newer firmware than this dashboard: the known fields are still right."""
+    payload = CPP_STATUS_PAYLOAD + b"\xee" * 4
+    frame = protocol.encode_frame(protocol.MsgId.STATUS, 1, payload)
+    (status,) = protocol.FrameParser().feed(frame)
+
+    for name, expected in CPP_STATUS_FIELDS.items():
+        assert getattr(status, name) == expected, name
 
 
 def test_decodes_cpp_framebuffer_vector():
