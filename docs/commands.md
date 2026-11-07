@@ -22,7 +22,7 @@ The dashboard's control panel sends the common commands and logs every reply.
 | Command | Effect | Reply |
 |---------|--------|-------|
 | `S <0-9> <0-9>` | Show two score digits | `OK 2-3` |
-| `H` | Heartbeat: pulse the activity pixel | `OK heartbeat` |
+| `H` | Heartbeat: blink the activity pixel | `OK heartbeat` |
 | `G <id>` | Show a glyph (`id` from 0 to `GLYPH_COUNT`−1, in `matrix.h`) | `OK glyph 1` |
 | `X <row> <col>` | Light one pixel alone (soldering check) | `OK pixel r3 c5 row=GP… col=GP…` |
 | `D <us>` | Static-mode row dwell (`DWELL_MIN_US`–`DWELL_MAX_US`, in `commands.h`) | `OK dwell 400 us` |
@@ -36,6 +36,9 @@ The dashboard's control panel sends the common commands and logs every reply.
 
 A rejected command replies `ERR …` with the reason, for example `ERR dwell 50-5000`.
 An unknown letter replies `ERR unknown`.
+
+The **activity pixel** is the bottom-right LED (`ACTIVITY_PIXEL_ROW` and `ACTIVITY_PIXEL_COL`
+in `matrix.c`). It blinks a few times after `H` or `S`, in static mode.
 
 ## Rules worth knowing
 

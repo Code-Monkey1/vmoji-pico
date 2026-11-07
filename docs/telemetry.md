@@ -59,10 +59,11 @@ source of the jitter it reported. The design notes are at the top of
 
 ## Compatibility
 
-Payloads only grow by **appending** fields. A reader decodes the fields it knows and
-ignores the rest, so an older dashboard keeps working with newer firmware. The dashboard
-also still reads the original 32-byte Status from older firmware and captures, and shows
-the newer fields as `-`.
+Payloads only grow by **appending** fields, and every size ever sent stays decodable:
+
+- A dashboard reads a newer board: it decodes the fields it knows and ignores the rest.
+- A dashboard reads older firmware or an old capture: it picks the largest layout that fits
+  and shows the fields added since as `-`.
 
 ## Changing the format
 
@@ -71,11 +72,23 @@ it is a shared file of reference frames,
 [`tools/protocol_vectors.txt`](../tools/protocol_vectors.txt), produced by the C++ code and
 decoded by the Python tests.
 
-1. Change the C++ side: `telemetry_frame.h`, and the sample values in
-   [`tools/protocol_selftest.cpp`](../tools/protocol_selftest.cpp).
-2. Regenerate the vectors: `tools/update-protocol-vectors.sh`.
-3. Update `protocol.py` (and the expected values in `tests/test_protocol.py`) until
-   `scripts/check.sh` passes.
+To add a Status field:
 
-If you skip a step, a test fails: the `protocol_vectors_current` ctest catches stale
-vectors, and the Python tests catch a decoder that no longer reads the whole payload.
+1. **`vmoji/telemetry_frame.h`:** append it to `StatusPayload` and update the size in its
+   `static_assert`.
+2. **`vmoji/telemetry.cpp`:** fill it in where `status` is built. If the value comes from
+   elsewhere, add a setter like `telemetry_set_pov()`.
+3. **[`tools/protocol_selftest.cpp`](../tools/protocol_selftest.cpp):** set it in the sample,
+   then regenerate the vectors with `tools/update-protocol-vectors.sh`.
+4. **`tools/dashboard/protocol.py`:** add a **new entry** to `_STATUS_LAYOUTS`. Never edit an
+   existing one: firmware and captures with that size exist forever. Add the field to `Status`
+   with a `None` default, and to `pack_status_payload`.
+5. **`tools/dashboard/sources.py`:** send a realistic value from `SimSource`.
+6. **`tools/dashboard/tests/test_protocol.py`:** add the expected value to `CPP_STATUS_FIELDS`,
+   add the new size to `SHIPPED_STATUS_SIZES`, and copy the new `status` vector into
+   `FROZEN_STATUS_FRAMES` (never regenerate the existing ones).
+7. **Show it:** see [Adding a readout or plot](dashboard.md#adding-a-readout-or-plot).
+
+Then run `scripts/check.sh`. It catches a missed step 1, 3, 4 or 6, and a shipped layout that
+was edited. **It can't catch steps 2 and 5:** a field nobody fills in sends zero, and the
+simulator sends zero too. So after flashing, check the real value on a board.

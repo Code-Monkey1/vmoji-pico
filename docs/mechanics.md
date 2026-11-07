@@ -7,19 +7,19 @@ The printable parts are OpenSCAD models in [`3D/`](../3D), built on the
 
 ## The design in one paragraph
 
-A dual-motor gear drive spins a plastic rotor through the gap between two induction coils.
-The rotor turns on **two 608ZZ bearings**: the bottom one clamped on an M8 stud in the base,
-the top one hanging under the TX deck, at a safe distance below the TX coil. Two small
-motors drive the rotor's gear through helical pinions. The electronics box beside the base
-holds the 12 V jack and switch.
+A dual-motor helical gear drive spins a plastic rotor through the gap between two induction
+coils. The rotor turns on **two 608ZZ bearings**: the bottom one clamped on an M8 stud in the
+base, the top one hanging under the TX deck, at a safe distance below the TX coil. The
+electronics box beside the base holds the 12 V jack and switch.
 
 ## Parameters
 
 Every dimension lives in one file,
 [`3D/vmoji-mech-params.scad`](../3D/vmoji-mech-params.scad), and every part derives from
 it. Change a value there, never in a part file. Shared helpers, layout math and
-`vm_assert_layout()` live in `motor-base-common.scad`. The docs name parameters rather than
-repeat their values, so the params file is always the reference.
+`vm_assert_layout()` live in `motor-base-common.scad`; `vm_assert_coil_gap_metal_free()` sits
+in the params file itself. The docs name parameters rather than repeat their values, so the
+params file is always the reference.
 
 ## Rules the design must keep
 
@@ -61,7 +61,9 @@ reprint the pinions and the rotor.
 ```bash
 3D/scripts/check-collisions.sh               # all checks, several minutes
 3D/scripts/check-collisions.sh base_deck     # a subset (see --help for the list)
-3D/scripts/render-preview.sh                 # refresh docs/images/assembly-preview.png
+JOBS=2 3D/scripts/check-collisions.sh        # fewer parallel renders, if memory is tight
+3D/scripts/render-preview.sh                 # render the assembly to 3D/preview.png
+3D/scripts/render-preview.sh --update-docs   # refresh the README image
 ```
 
 - **Asserts** (`vm_assert_layout()`) run in every file, every render: clearances, coil
@@ -69,8 +71,7 @@ reprint the pinions and the rotor.
 - **The collision check** intersects every pair of parts as assembled, spinning parts as
   swept volumes, plus a soldering-iron cylinder above every heat-set insert, and fails on
   any real overlap. It also checks the 12 V jack and the switch keep-out space in the box.
-  It takes about 5 minutes on OpenSCAD 2021; newer builds run it faster with
-  `OPENSCAD_ARGS="--enable=manifold"`.
+  A check that doesn't finish cleanly fails the run, so running out of memory can't pass.
 
 Never weaken an assert or a check to make a build pass: they are the safety net.
 

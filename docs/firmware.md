@@ -15,8 +15,8 @@ The output is `vmoji/build/vmoji.uf2`. The SDK, toolchain and picotool versions 
 in [`vmoji/CMakeLists.txt`](../vmoji/CMakeLists.txt) (`sdkVersion`, `toolchainVersion`,
 `picotoolVersion`). The scripts read them from there.
 
-Without the script, it is plain CMake (with the VS Code extension installed, its SDK is
-used whatever `PICO_SDK_PATH` says):
+Without the script, it is plain CMake (the [VS Code extension](getting-started.md#optional-vs-code)
+changes which SDK it uses):
 
 ```bash
 cmake -S vmoji -B vmoji/build -G Ninja -DPICO_SDK_PATH=$HOME/.pico-sdk/sdk/<version>
@@ -29,10 +29,13 @@ cmake --build vmoji/build
 vmoji/scripts/flash.sh
 ```
 
-This loads the UF2 with `picotool` and starts it. A board that is running vmoji reboots
-into its bootloader on its own; a blank or crashed board needs the BOOTSEL button held while
-you plug it in. Without picotool, hold BOOTSEL while plugging in and copy
-`vmoji/build/vmoji.uf2` onto the `RPI-RP2` drive that appears.
+This loads the UF2 with the `picotool` from `setup-sdk.sh` and starts it. A board that is
+running vmoji reboots into its bootloader on its own; a blank or crashed board needs the
+BOOTSEL button held while you plug it in. Without picotool, hold BOOTSEL while plugging in and
+copy `vmoji/build/vmoji.uf2` onto the `RPI-RP2` drive that appears.
+
+To confirm what is on the board, send `I`: its `sha=` is the commit the firmware was built from
+([Commands](commands.md)).
 
 After flashing, check the board with the [Bring-up](bring-up.md) checklist.
 
@@ -49,7 +52,9 @@ Or the firmware tests alone:
 ```bash
 cmake -S tests/firmware -B build-host-tests
 cmake --build build-host-tests
-ctest --test-dir build-host-tests --output-on-failure    # add -R <name> for one test
+ctest --test-dir build-host-tests --output-on-failure
+ctest --test-dir build-host-tests -N                     # list the test names
+ctest --test-dir build-host-tests -R pov_service         # only tests matching a regex
 ```
 
 ## Code map
@@ -73,8 +78,6 @@ ctest --test-dir build-host-tests --output-on-failure    # add -R <name> for one
   `#ifndef VMOJI_HOST_TEST`.
 - **Hardware code stays thin**: `main.c`, `pov_runtime.c`, `pio_scan.c`, `matrix.c`,
   `uart_link.c` and `rotation_sync.c` are not compiled for the host.
-- **Comments are part of the code.** They record timing contracts and past pitfalls: move
-  them with the code and update them when behavior changes.
 
 ### Adding a source file
 
@@ -86,5 +89,4 @@ ctest --test-dir build-host-tests --output-on-failure    # add -R <name> for one
 
 ### Changing the telemetry format
 
-See [Telemetry: changing the format](telemetry.md#changing-the-format). The C++ and Python
-sides must change together, and the tests enforce it.
+Follow [Telemetry: changing the format](telemetry.md#changing-the-format).

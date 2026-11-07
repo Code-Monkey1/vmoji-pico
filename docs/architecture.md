@@ -31,8 +31,8 @@ flowchart LR
   That pulse (the *index*) tells the firmware where "angle zero" is and how fast the rotor
   turns.
 - **Host link.** A USB or UART cable carries commands to the board and telemetry back.
-  There is no wireless data link, so the cable is for bench work with the rotor stopped
-  (or in simulation mode, below).
+  There is no wireless data link, so the cable is for bench work with the rotor stopped or
+  turned slowly by hand (or in simulation mode, below).
 
 ## How a 3D image is drawn
 
@@ -115,9 +115,9 @@ USB (CDC serial) and UART0 carry the same traffic:
 ### Built to be tested on a PC
 
 The logic (command parsing, the POV state machine, the codec, rotation estimation, the boot
-demo) has no Pico SDK dependency. Hardware access comes in through small injected
-interfaces, so [`tests/firmware/`](../tests/firmware) compiles the same sources on your PC
-with fakes. The code that touches hardware is kept thin. Details: [Firmware](firmware.md).
+demo) has no Pico SDK dependency, so [`tests/firmware/`](../tests/firmware) compiles the same
+sources on your PC with fakes for the hardware. How that stays true:
+[Firmware](firmware.md#conventions).
 
 ## Glossary
 
@@ -133,3 +133,4 @@ with fakes. The code that touches hardware is kept thin. Details: [Firmware](fir
 | Scanlist | The baked list of mux steps (GPIO masks) for one turn. |
 | Row dwell | In static mode, how long each row stays lit (the `D` command). |
 | Boot demo | The pixel walk the board loops from power-up until a host takes over. |
+| Activity pixel | The bottom-right LED, which blinks after `H` or `S` in static mode. |

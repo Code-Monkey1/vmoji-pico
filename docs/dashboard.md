@@ -22,6 +22,9 @@ All commands below run from `tools/dashboard`.
 .venv/bin/python app.py --help                # every option
 ```
 
+Ctrl+C in the terminal closes it like the window's close button, so a recording is finished
+and saved.
+
 - **Finding the board.** Ports are ranked by USB id (the Pico itself, then a Debug Probe's
   UART), and a port must deliver one valid frame before the dashboard trusts it. With no
   such port it says why in the terminal (including a board stuck in BOOTSEL) and falls back
@@ -32,6 +35,18 @@ All commands below run from `tools/dashboard`.
 - **Recording.** *Record* writes a `.vmc` capture: the raw bytes with host timestamps, so a
   fixed parser can re-read old sessions, corrupted frames included. Replays get play,
   pause, seek, loop and speed controls.
+
+### No display
+
+The app needs a graphical session. Without one (SSH, a container) it says so and exits. The
+alternatives, with `sudo apt install xvfb` for the first:
+
+```bash
+xvfb-run -a .venv/bin/python app.py --sim                # a virtual display
+QT_QPA_PLATFORM=offscreen .venv/bin/python app.py --sim  # no window at all
+```
+
+`verify_link.py`, `walk_pixels.py` and the tests need no display.
 
 ## What it shows
 
@@ -46,8 +61,9 @@ All commands below run from `tools/dashboard`.
 - **Control:** glyph, row dwell, heartbeat, blank, pause, reset counters, query.
 - **Pixel walk:** lights each LED alone to check the soldering. Step with Prev/Next or
   *Auto*, score each LED 0–5 with the buttons or the number keys, then *Export CSV*
-  (row, column, both GPIOs, score). Untoggling *Start* blanks the display. A dim LED in the walk points to the LED or
-  its joints; dim only with the full matrix lit (`G 5`) points to the row's current.
+  (row, column, both GPIOs, score). Untoggling *Start* blanks the display. A dim LED in the
+  walk points to the LED or its joints; dim only with the full matrix lit (`G 5`) points to
+  the row's current.
 
 ## Command-line tools
 
@@ -88,6 +104,7 @@ ReaderWorker (QThread) ──queued signal──▶ TelemetryModel (bounded) ─
 - **Data rate and frame rate are independent.** Messages land in the model as they arrive;
   the screen repaints at a fixed 30 Hz.
 - **Every buffer is bounded**, so the app can run for days.
+- **One dark theme.** Every color lives in `theme.py`, whatever the desktop's theme is.
 - **Most of the code is Qt-free and tested with plain pytest:** the parser
   (`protocol.py`), the sources (`sources.py`), the model, the readout formatting
   (`panels.py`), reconnect and the pixel walk logic. The Qt layer (`main_window.py`,

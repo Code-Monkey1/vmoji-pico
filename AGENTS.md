@@ -17,12 +17,13 @@ before changing an area. Start with [`docs/architecture.md`](docs/architecture.m
 ## Commands
 
 - Everything before a commit: `scripts/check.sh` (firmware host tests, dashboard pytest + ruff,
-  doc links). Add `--cad` for the slow collision check.
+  doc links, collision-check verdicts). Add `--cad` for the slow real collision check.
 - Setup problems: `scripts/doctor.sh`.
 - One host test: `ctest --test-dir build-host-tests -R <test_name>` (after `scripts/check.sh`
   has configured `build-host-tests`).
 - Firmware: `vmoji/scripts/build.sh` builds `vmoji/build/vmoji.uf2` from the CLI;
-  `vmoji/scripts/flash.sh` flashes it (needs a board). VS Code is optional.
+  `vmoji/scripts/flash.sh` flashes it (needs a board, and the picotool that
+  `vmoji/scripts/setup-sdk.sh` builds). VS Code is optional.
 - CAD: `3D/scripts/check-collisions.sh [check ...]` (slow, minutes);
   `3D/scripts/export-stl.sh [part ...]` regenerates the gitignored `3D/stl/`.
 
@@ -31,14 +32,15 @@ before changing an area. Start with [`docs/architecture.md`](docs/architecture.m
 - Keep logic that must be testable free of the Pico SDK, behind injected hooks, and keep
   hardware-touching code thin. New sources and host tests are registered in
   `vmoji/CMakeLists.txt` and `tests/firmware/CMakeLists.txt` (see `docs/firmware.md`).
-- The telemetry wire format has two implementations (C++ and Python). Change them together:
-  regenerate `tools/protocol_vectors.txt` with `tools/update-protocol-vectors.sh` and keep the
-  tests passing (`docs/telemetry.md`).
+- The telemetry wire format has two implementations (C++ and Python). Change them together,
+  following the steps in `docs/telemetry.md`. Layouts are append-only: every shipped size stays
+  decodable.
 - OpenSCAD parts all derive from one shared params file. The layout asserts and the collision
   script are the safety net: don't weaken or bypass them to make a build pass.
 - Coil-safe rule: no metal in the TX-RX coil gap.
 - Versions (SDK, toolchain, picotool) are set only in `vmoji/CMakeLists.txt`; scripts read them
-  from there.
+  from there. The toolchain pin applies only with the Pico VS Code extension; without it, builds
+  use the system's `arm-none-eabi-gcc`.
 
 ## Conventions
 
@@ -50,3 +52,4 @@ before changing an area. Start with [`docs/architecture.md`](docs/architecture.m
   can't drift from the code.
 - Mechanical parts are printed in PLA; fit tolerances are tuned with the fit-test coupons, not
   guessed.
+- The dashboard has one dark theme. Every color lives in `tools/dashboard/theme.py`.

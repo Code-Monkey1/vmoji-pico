@@ -7,13 +7,9 @@ Start with `scripts/doctor.sh`: it finds most setup problems and prints the fix.
 **`No Pico SDK at ...`**
 Run `vmoji/scripts/setup-sdk.sh`, or point `PICO_SDK_PATH` at an existing SDK checkout.
 
-**`picotool ... was built without USB support`**
-The SDK built picotool before the libusb headers were installed. Install them and rebuild:
-
-```bash
-sudo apt install libusb-1.0-0-dev pkg-config
-vmoji/scripts/build.sh --clean
-```
+**`No picotool with USB support found`**
+Run `vmoji/scripts/setup-sdk.sh`, which builds one
+([why it's separate](getting-started.md#3-firmware-the-pico-sdk-and-picotool)).
 
 **Flashing fails: no device found, or permission denied**
 - Use a data USB cable; some cables only charge.
@@ -42,8 +38,12 @@ Join the `dialout` group, then log out and back in:
 It found no board that sends valid frames. Check the cable, the `dialout` group and that
 the board runs vmoji (`verify_link.py`). Pick the port by hand with `--port`.
 
+**`No display: the dashboard needs a graphical session`**
+There is no desktop session here (SSH, a container). See
+[Dashboard: no display](dashboard.md#no-display).
+
 **`qt.qpa.plugin: Could not load the Qt platform plugin "xcb"`**
-`sudo apt install libxcb-cursor0`.
+You do have a display, and a library Qt needs is missing: `sudo apt install libxcb-cursor0`.
 
 **A serial terminal shows garbage**
 That is expected: command replies travel inside the binary telemetry stream. Use
@@ -64,5 +64,5 @@ A part failed to render or raised a warning. The lines under `FAILED` show why; 
 part in OpenSCAD to see it in context.
 
 **`render-preview.sh` fails without a display**
-OpenSCAD needs OpenGL to write PNGs. Run it in a desktop session, or wrap it:
-`xvfb-run 3D/scripts/render-preview.sh`.
+OpenSCAD needs OpenGL to write PNGs. The script uses a virtual display on its own when
+`xvfb-run` is installed: `sudo apt install xvfb`.

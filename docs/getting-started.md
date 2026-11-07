@@ -4,43 +4,50 @@ This sets up a Linux machine to work on every part of vmoji. The commands use `a
 (Ubuntu, Debian, Linux Mint); other distributions need the equivalent packages. macOS and
 Windows are untested.
 
-You only need the parts you will work on:
-
-| Part | Needs |
-|------|-------|
-| Firmware | CMake, Ninja, the ARM GCC toolchain, the Pico SDK, libusb (for flashing) |
-| Dashboard | Python 3.10 or newer |
-| 3D | OpenSCAD and the BOSL2 library |
+You only need the parts you will work on.
 
 ## 1. System packages
 
 ```bash
-sudo apt install git cmake ninja-build build-essential pkg-config \
+sudo apt update
+sudo apt install git python3 \
+    cmake ninja-build build-essential pkg-config \
     gcc-arm-none-eabi libnewlib-arm-none-eabi libusb-1.0-0-dev \
-    python3 python3-venv libxcb-cursor0 \
+    python3-venv libxcb-cursor0 \
     openscad
 ```
 
-Drop the lines you don't need: line 2 is firmware, line 3 the dashboard, line 4 the 3D
-part. `libusb-1.0-0-dev` lets the SDK build a `picotool` that can flash over USB.
+Drop what you don't need:
+
+- **Everything:** `git` and `python3`. The firmware needs Python only to build: the Pico SDK uses
+  it to checksum the boot code, and no Python runs on the board. The dashboard needs 3.10 or newer.
+- **Firmware:** `cmake` through `libusb-1.0-0-dev`. Step 3 adds the Pico SDK and picotool.
+- **Dashboard:** `python3-venv libxcb-cursor0`. Step 4 adds the Python packages.
+- **3D:** `openscad`. Step 5 adds the BOSL2 library.
 
 ## 2. Get the code
 
 ```bash
-git clone <repository-url> vmoji-pico
+git clone https://github.com/Code-Monkey1/vmoji-pico.git
 cd vmoji-pico
 ```
 
-## 3. Firmware: the Pico SDK
+## 3. Firmware: the Pico SDK and picotool
 
 ```bash
 vmoji/scripts/setup-sdk.sh
 ```
 
-This clones the SDK version pinned in [`vmoji/CMakeLists.txt`](../vmoji/CMakeLists.txt)
-(`sdkVersion`) into `~/.pico-sdk/sdk/<version>`, the same place the Pico VS Code extension
-uses. Set `PICO_SDK_PATH` to put it elsewhere (not possible with the extension installed,
-see below). Then build and flash: [Firmware](firmware.md).
+This takes a few minutes the first time. At the versions pinned in
+[`vmoji/CMakeLists.txt`](../vmoji/CMakeLists.txt), it:
+
+- clones the SDK into `~/.pico-sdk/sdk/<version>` (set `PICO_SDK_PATH` to put it elsewhere,
+  [except with VS Code](#optional-vs-code));
+- builds `picotool` into `~/.pico-sdk/picotool/<version>`. A separate build is needed because
+  the copy the SDK makes during a firmware build has no USB support, so it can't flash.
+
+These are the same places the Pico VS Code extension uses, so the two share one copy. Then
+build and flash: [Firmware](firmware.md).
 
 ## 4. Dashboard: a Python virtual environment
 
@@ -83,7 +90,7 @@ sudo usermod -aG dialout $USER
 
 ```bash
 scripts/doctor.sh    # every prerequisite, with a fix for anything missing
-scripts/check.sh     # build and run all the tests
+scripts/check.sh     # run all the tests; it doesn't need a firmware build or a board
 ```
 
 `doctor.sh` exits with an error only for missing requirements; warnings (such as the
@@ -101,3 +108,7 @@ toolchain and picotool under `~/.pico-sdk`. Once it is installed, every build us
 (the scripts and plain CMake too), and `PICO_SDK_PATH` has no effect. Ninja must still be
 on your `PATH` for the scripts. The extension also adds debugging over SWD with a Raspberry
 Pi Debug Probe.
+
+The compiler is the one real difference. `toolchainVersion` in `vmoji/CMakeLists.txt` pins the
+extension's ARM GCC; without the extension, you build with whatever `gcc-arm-none-eabi` your
+distribution ships. Both produce working firmware.
